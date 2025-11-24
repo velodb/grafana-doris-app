@@ -1,0 +1,11 @@
+services:
+  grafana:
+    extends:
+      file: .config/docker-compose-base.yaml
+      service: grafana
+    networks:
+      - doris-opentelemetry-demo
+
+networks:
+  doris-opentelemetry-demo:
+    external: true
