@@ -1,0 +1,25 @@
+package main
+
+import (
+	"os"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend/app"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	"github.com/selectdb/discover-app/pkg/plugin"
+	
+)
+
+func main() {
+	log.DefaultLogger.Info("插件后端启动成功", "detail", "some more context")
+	// Start listening to requests sent from Grafana. This call is blocking so
+	// it won't finish until Grafana shuts down the process or the plugin choose
+	// to exit by itself using os.Exit. Manage automatically manages life cycle
+	// of app instances. It accepts app instance factory as first
+	// argument. This factory will be automatically called on incoming request
+	// from Grafana to create different instances of `App` (per plugin
+	// ID).
+	if err := app.Manage("doris-app", plugin.NewApp, app.ManageOpts{}); err != nil {
+		log.DefaultLogger.Error(err.Error())
+		os.Exit(1)
+	}
+}
