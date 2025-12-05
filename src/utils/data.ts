@@ -28,7 +28,7 @@ export const OPERATORS: string[] = [
     'match_phrase_prefix',
 ];
 export const SQL_OPERATORS: string[] = ['=', '!=', '>', '<', '>=', '<=', 'LIKE', 'IN', 'AND', 'OR', 'BETWEEN'];
-export const TIME_FIELD_TYPES = ['DATETIME', 'DATE', 'DATETIMEV2', 'DATAV2', 'TIME'];
+export const TIME_FIELD_TYPES = ['DATETIME', 'DATE', 'DATETIMEV2', 'DATEV2', 'TIME'];
 export function isValidTimeFieldType(fieldType: string): boolean {
     // 提取基础字段类型（移除括号及其内容）
     const baseFieldType = fieldType.split('(')[0];
