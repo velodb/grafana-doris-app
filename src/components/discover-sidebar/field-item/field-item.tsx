@@ -80,7 +80,7 @@ export default function FieldItem(props: FieldItemProps) {
                         {props.type === 'add' ? (
                             <IconButton
                                 name="plus"
-                                tooltip="添加到表格"
+                                tooltip="Add to table"
                                 onClick={e => {
                                     props?.onAdd?.(field);
                                     e.stopPropagation();
@@ -89,7 +89,7 @@ export default function FieldItem(props: FieldItemProps) {
                         ) : (
                             <IconButton
                                 name="minus"
-                                tooltip="从表格删除"
+                                tooltip="Delete from table"
                                 onClick={(e: any) => {
                                     props?.onRemove?.(field);
                                     e.stopPropagation();

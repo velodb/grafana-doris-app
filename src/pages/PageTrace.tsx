@@ -98,7 +98,7 @@ export default function PageTrace() {
             },
             error: (err: any) => {
                 setLoading(false);
-                console.log('查询错误', err);
+                console.log('Fetch Error', err);
             },
         });
     }, [
@@ -156,7 +156,7 @@ export default function PageTrace() {
             },
             error: (err: any) => {
                 setLoading(false);
-                console.log('查询错误', err);
+                console.log('Fetch Error', err);
             },
         });
     }, [currentCatalog, currentDatabase, currentDate, currentTable, currentTimeField, selectdbDS, setTracesServices]);
@@ -200,7 +200,7 @@ export default function PageTrace() {
             },
             error: (err: any) => {
                 setLoading(false);
-                console.log('查询错误', err);
+                console.log('Fetch Error', err);
             },
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps

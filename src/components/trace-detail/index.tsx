@@ -8,13 +8,14 @@ import { currentCatalogAtom, currentDatabaseAtom, tableTracesDataAtom, selectedD
 import { currentTraceTableAtom } from 'store/traces';
 import { formatTracesResData } from 'utils/data';
 
-export default function TraceDetail(props: { onClose?: () => void; open: boolean; traceId?: string }) {
+export default function TraceDetail(props: { onClose?: () => void; open: boolean; traceId?: string; traceTable?: string }) {
     const currentTable = useAtomValue(currentTraceTableAtom);
     const currentCatalog = useAtomValue(currentCatalogAtom);
     const currentDatabase = useAtomValue(currentDatabaseAtom);
     const [traceData, setTraceData] = useAtom(tableTracesDataAtom);
     const selectedRow = useAtomValue(selectedRowAtom);
     const selectdbDS = useAtomValue(selectedDatasourceAtom);
+    const traceTable = props?.traceTable || currentTable || 'otel_traces';
     const [loading, setLoading] = React.useState(false);
 
     const { open, traceId } = props;
@@ -23,7 +24,7 @@ export default function TraceDetail(props: { onClose?: () => void; open: boolean
         let payload: any = {
             catalog: currentCatalog,
             database: currentDatabase,
-            table: currentTable || 'otel_traces',
+            table: traceTable,
             cluster: '',
             sort: 'DESC',
             trace_id: traceId || '',
@@ -43,10 +44,10 @@ export default function TraceDetail(props: { onClose?: () => void; open: boolean
             },
             error: (err: any) => {
                 setLoading(false);
-                console.log('查询错误', err);
+                console.log('Fetch Error', err);
             },
         });
-    }, [currentCatalog, currentDatabase, currentTable, selectdbDS, setTraceData, traceId]);
+    }, [currentCatalog, currentDatabase, traceTable, selectdbDS, setTraceData, traceId]);
 
     useEffect(() => {
         if (traceId) {

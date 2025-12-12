@@ -108,7 +108,7 @@ export default function DiscoverHeader(
                     setDatabases(options);
                 }
             },
-            error: (err: any) => console.log('查询错误', err),
+            error: (err: any) => console.log('Fetch Error', err),
         });
 
         return () => subscription.unsubscribe();
@@ -158,7 +158,7 @@ export default function DiscoverHeader(
                 }
             },
             error: (err: any) => {
-                console.log('查询错误', err);
+                console.log('Fetch Error', err);
             },
         });
     }
@@ -199,7 +199,7 @@ export default function DiscoverHeader(
                 }
             },
             error: (err: any) => {
-                console.log('查询错误', err);
+                console.log('Fetch Error', err);
             },
         });
     }
@@ -254,7 +254,7 @@ export default function DiscoverHeader(
                                         setTables(options);
                                     }
                                 },
-                                error: (err: any) => console.log('查询错误', err),
+                                error: (err: any) => console.log('Fetch Error', err),
                             });
                         }}
                     ></Select>

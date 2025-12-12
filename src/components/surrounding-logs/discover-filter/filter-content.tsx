@@ -86,13 +86,13 @@ export function FilterContent(props: FilterContentProps) {
             return (
                 <div className={rowStyle}>
                     <div className={colStyle}>
-                        <Field label="最小值" invalid={!!errors.minValue} error={errors.minValue?.message}>
-                            <Input {...register('minValue', { required: '请输入最小值' })} />
+                        <Field label="Min Value" invalid={!!errors.minValue} error={errors.minValue?.message}>
+                            <Input {...register('minValue', { required: 'Enter the minValue' })} />
                         </Field>
                     </div>
                     <div className={colStyle}>
-                        <Field label="最大值" invalid={!!errors.maxValue} error={errors.maxValue?.message}>
-                            <Input {...register('maxValue', { required: '请输入最大值' })} />
+                        <Field label="Max Value" invalid={!!errors.maxValue} error={errors.maxValue?.message}>
+                            <Input {...register('maxValue', { required: 'Enter the maxValue' })} />
                         </Field>
                     </div>
                 </div>
@@ -110,8 +110,8 @@ export function FilterContent(props: FilterContentProps) {
         ) {
             return (
                 <>
-                    <Field label="值" invalid={!!errors.value} error={(errors.value as any)?.message}>
-                        <Input {...register('value', { required: '请输入值' })} list="field-value-list" />
+                    <Field label="Value" invalid={!!errors.value} error={(errors.value as any)?.message}>
+                        <Input {...register('value', { required: 'Enter the value' })} list="field-value-list" />
                     </Field>
                     <datalist id="field-value-list">
                         {tableFieldValue.map((item, idx) => (
@@ -123,11 +123,11 @@ export function FilterContent(props: FilterContentProps) {
         }
         if (currentOperator === 'in' || currentOperator === 'not in') {
             return (
-                <Field label="值" invalid={!!errors.value} error={(errors.value as any)?.message}>
+                <Field label="Value" invalid={!!errors.value} error={(errors.value as any)?.message}>
                     <Controller
                         name="value"
                         control={control}
-                        rules={{ required: '请输入值' }}
+                        rules={{ required: 'Enter the value' }}
                         render={({ field }) => (
                             <Select
                                 {...field}
@@ -136,7 +136,7 @@ export function FilterContent(props: FilterContentProps) {
                                     label: item.value,
                                     value: item.value,
                                 }))}
-                                placeholder="请选择值"
+                                placeholder="Select value"
                                 onChange={selected => field.onChange(selected ? selected.map((s: any) => s.value) : [])}
                                 value={tableFieldValue
                                     .filter(item => Array.isArray(field.value) && field.value.includes(item.value))
@@ -157,11 +157,11 @@ export function FilterContent(props: FilterContentProps) {
         <form onSubmit={handleSubmit(onSubmit)} className={containerStyle}>
             <div className={rowStyle}>
                 <div className={colStyle}>
-                    <Field label="列名" invalid={!!errors.field} error={(errors.field as any)?.message}>
+                    <Field label="Columns" invalid={!!errors.field} error={(errors.field as any)?.message}>
                         <Controller
                             name="field"
                             control={control}
-                            rules={{ required: '请选择字段' }}
+                            rules={{ required: 'Select Field' }}
                             render={({ field }) => (
                                 <Select
                                     {...field}
@@ -175,11 +175,11 @@ export function FilterContent(props: FilterContentProps) {
                     </Field>
                 </div>
                 <div className={colStyle}>
-                    <Field label="条件" invalid={!!errors.operator} error={(errors.operator as any)?.message}>
+                    <Field label="Operator" invalid={!!errors.operator} error={(errors.operator as any)?.message}>
                         <Controller
                             name="operator"
                             control={control}
-                            rules={{ required: '请选择操作符' }}
+                            rules={{ required: 'Select Operator' }}
                             render={({ field }) => (
                                 <Select
                                     {...field}
@@ -216,9 +216,9 @@ export function FilterContent(props: FilterContentProps) {
                         onHide();
                     }}
                 >
-                    取消
+                    Cancel
                 </Button>
-                <Button type="submit">确定</Button>
+                <Button type="submit">Confirm</Button>
             </div>
         </form>
     );

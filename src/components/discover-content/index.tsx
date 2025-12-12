@@ -260,9 +260,9 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                         row.getCanExpand() && (
                             <div className="flex items-center">
                                 {row.getIsExpanded() ? (
-                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-down" tooltip="收起" />
+                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-down" tooltip="Collapse" />
                                 ) : (
-                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-right" tooltip="展开" />
+                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-right" tooltip="Expand" />
                                 )}
                                 <div className="ml-1">{getValue<string>()}</div>
                             </div>
@@ -309,9 +309,30 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                 accessorKey: '_source',
                 header: '_source',
                 cell: ({ row, getValue }) => {
-                    function createMarkup() {
-                        return { __html: getValue<string>() };
-                    }
+                    const html = getValue<string>();
+
+                    const handleClick: React.MouseEventHandler<HTMLDivElement> = e => {
+                        const target = e.target as HTMLElement | null;
+                        if (!target) {
+                            return;
+                        }
+
+                        const link = target.closest<HTMLElement>('[data-trace-id]');
+                        if (!link) {
+                            return;
+                        }
+
+                        const traceId = link.getAttribute('data-trace-id');
+                        if (!traceId) {
+                            return;
+                        }
+
+                        console.log('traceId', traceId);
+
+                        e.preventDefault();
+                        openTraceDrawer(traceId);
+                    };
+
                     return (
                         <div
                             className={css`
@@ -326,10 +347,16 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                                     & .field-key {
                                         background-color: ${theme.isDark ? '#3f3f4f' : 'rgb(191, 217, 253)'};
                                     }
+                                    & .trace-link {
+                                        cursor: pointer;
+                                        text-decoration: underline;
+                                        color: blue;
+                                    }
                                 `}
                             >
                                 <div
-                                    dangerouslySetInnerHTML={createMarkup()}
+                                    onClick={handleClick}
+                                    dangerouslySetInnerHTML={{ __html: html }}
                                     className={css`
                                         max-height: 12rem;
                                         overflow: auto;
@@ -471,7 +498,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                     }}
                 />
             </div>
-            <TraceDetail onClose={() => setDrawerOpen(false)} open={drawerOpen} traceId={selectedRow?.trace_id} />
+            <TraceDetail onClose={() => setDrawerOpen(false)} open={drawerOpen} traceId={selectedRow?.trace_id} traceTable='otel_traces' />
 
             {surroundingLogsOpen && (
                 <Drawer

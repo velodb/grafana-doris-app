@@ -21,7 +21,7 @@ export function FilterContent() {
       <div className={css`
         font-size: 1.125rem;
         font-weight: 500;
-        `}>{`筛选字段`}</div>
+        `}>{`Field Filter`}</div>
       <div className={css`
           margin-top: 1rem;
           border: none;

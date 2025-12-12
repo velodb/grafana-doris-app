@@ -138,7 +138,7 @@ export function useDiscoverData() {
             },
             error: (err: any) => {
                 setLoading(prev => ({ ...prev, getTableData: false }));
-                console.log('查询错误', err);
+                console.log('Fetch Error', err);
             },
         });
     }, [
@@ -232,7 +232,7 @@ export function useDiscoverData() {
             },
             error: (err: any) => {
                 setLoading(prev => ({ ...prev, getTableDataCharts: false }));
-                console.log('查询错误', err);
+                console.log('Fetch Error', err);
             },
         });
     }, [
@@ -311,7 +311,7 @@ export function useDiscoverData() {
                 setTopData(rowsData);
             },
             error: (err: any) => {
-                console.log('查询错误', err);
+                console.log('Fetch Error', err);
                 setTopData([]);
             },
         });
@@ -394,7 +394,7 @@ export function useDiscoverData() {
                 setTableTotalCount(totalCount);
             },
             error: (err: any) => {
-                console.log('查询错误', err);
+                console.log('Fetch Error', err);
             },
         });
     }, [
@@ -449,11 +449,11 @@ export function useDiscoverData() {
                     if (!ok) {
                         return;
                     }
-                    const formattedData = formatTracesResData(data);
+                    const formattedData = formatTracesResData(data.results.getTableDataTrace.frames[0]);
                     setTraceData(formattedData);
                 },
                 error: (err: any) => {
-                    console.log('查询错误', err);
+                    console.log('Fetch Error', err);
                 },
             });
         },

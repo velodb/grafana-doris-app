@@ -22,14 +22,13 @@ func (a *App) handlePing(w http.ResponseWriter, req *http.Request) {
 
 // 获取表
 func (a *App) handleTable(w http.ResponseWriter, req *http.Request) {
-	log.DefaultLogger.Info("收到请求")
 	q := req.URL.Query()
 	ds := q.Get("ds")
 	database := q.Get("database")
 
 	sql := fmt.Sprintf("USE `%s`; SHOW TABLES;", database)
 
-	log.DefaultLogger.Info("执行SQL: %d", sql)
+	log.DefaultLogger.Info("Exec SQL: %d", sql)
 	data, err := handleProxyQuery(sql, ds)
 	if err != nil {
 		fmt.Println("Query error:", err)
@@ -41,13 +40,12 @@ func (a *App) handleTable(w http.ResponseWriter, req *http.Request) {
 
 // 获取数据库
 func (a *App) handleDatabase(w http.ResponseWriter, req *http.Request) {
-	log.DefaultLogger.Info("收到请求")
 	q := req.URL.Query()
 	ds := q.Get("ds")
 
 	sql := `SWITCH internal; SHOW DATABASES;`
 
-	log.DefaultLogger.Info("执行SQL: %d", sql)
+	log.DefaultLogger.Info("Exec SQL: %d", sql)
 	data, err := handleProxyQuery(sql, ds)
 	if err != nil {
 		fmt.Println("Query error:", err)
@@ -60,7 +58,6 @@ func (a *App) handleDatabase(w http.ResponseWriter, req *http.Request) {
 
 // 获取字段
 func (a *App) handleFields(w http.ResponseWriter, req *http.Request) {
-	log.DefaultLogger.Info("收到 Get Field 请求")
 	q := req.URL.Query()
 	ds := q.Get("ds")
 	database := q.Get("database")
@@ -68,7 +65,6 @@ func (a *App) handleFields(w http.ResponseWriter, req *http.Request) {
 
 	sql := fmt.Sprintf("USE `%s`; set describe_extend_variant_column = true; DESC `%s`;", database, table)
 
-	log.DefaultLogger.Info("执行 Get Field SQL", sql)
 	data, err := handleProxyQuery(sql, ds)
 	if err != nil {
 		fmt.Println("Query error:", err)
@@ -80,7 +76,6 @@ func (a *App) handleFields(w http.ResponseWriter, req *http.Request) {
 
 // 获取索引
 func (a *App) handleIndexes(w http.ResponseWriter, req *http.Request) {
-	log.DefaultLogger.Info("收到请求")
 	q := req.URL.Query()
 	ds := q.Get("ds")
 	table := q.Get("table")
@@ -90,7 +85,7 @@ func (a *App) handleIndexes(w http.ResponseWriter, req *http.Request) {
 
 	sql := "USE `" + database + "`;" + showIndexesSQL
 
-	log.DefaultLogger.Info("执行SQL: %d", sql)
+	log.DefaultLogger.Info("Exec SQL: %d", sql)
 	data, err := handleProxyQuery(sql, ds)
 	if err != nil {
 		fmt.Println("Query error:", err)
@@ -115,7 +110,6 @@ func (a *App) handleTableDataCharts(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.DefaultLogger.Info("收到 table_data_charts 请求")
 	paramsJSON, _ := json.Marshal(params)
 	log.DefaultLogger.Info(fmt.Sprintf("params: %s", paramsJSON))
 
@@ -123,7 +117,7 @@ func (a *App) handleTableDataCharts(w http.ResponseWriter, req *http.Request) {
 	queryTableChartsSQL := GetQueryTableChartsSQL(params)
 	sql := "USE `" + params.Database + "`;" + queryTableChartsSQL
 
-	log.DefaultLogger.Info("执行SQL: %s", sql)
+	log.DefaultLogger.Info("Exec SQL: %s", sql)
 
 	// Step 3: 执行查询
 	ds := params.DS
@@ -152,7 +146,6 @@ func (a *App) handleTableDataCount(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.DefaultLogger.Info("收到 table_data_count 请求")
 	paramsJSON, _ := json.Marshal(params)
 	log.DefaultLogger.Info(fmt.Sprintf("params: %s", paramsJSON))
 
@@ -160,7 +153,7 @@ func (a *App) handleTableDataCount(w http.ResponseWriter, req *http.Request) {
 	queryTableChartsSQL := GetQueryTableCountSQL(params)
 	sql := "USE `" + params.Database + "`;" + queryTableChartsSQL
 
-	log.DefaultLogger.Info("执行SQL: %s", sql)
+	log.DefaultLogger.Info("Exec SQL: %s", sql)
 
 	// Step 3: 执行查询
 	ds := params.DS
@@ -190,7 +183,6 @@ func (a *App) handleTableData(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.DefaultLogger.Info("收到 table_data 请求")
 	paramsJSON, _ := json.Marshal(params)
 	log.DefaultLogger.Info(fmt.Sprintf("params: %s", paramsJSON))
 
@@ -198,7 +190,7 @@ func (a *App) handleTableData(w http.ResponseWriter, req *http.Request) {
 	queryTableChartsSQL := GetQueryTableDataSQL(params)
 	// sql := `USE ` + params.Database + `;` + queryTableChartsSQL
 	sql := "USE `" + params.Database + "`;" + queryTableChartsSQL
-	log.DefaultLogger.Info("执行SQL: %s", sql)
+	log.DefaultLogger.Info("Exec SQL: %s", sql)
 
 	// Step 3: 执行查询
 	ds := params.DS
@@ -226,7 +218,6 @@ func (a *App) handleTopData(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.DefaultLogger.Info("收到 table_data 请求")
 	paramsJSON, _ := json.Marshal(params)
 	log.DefaultLogger.Info(fmt.Sprintf("params: %s", paramsJSON))
 
@@ -234,7 +225,7 @@ func (a *App) handleTopData(w http.ResponseWriter, req *http.Request) {
 	queryTableChartsSQL := GetQueryTableDataSQL(params)
 	// sql := `USE ` + params.Database + `;` + queryTableChartsSQL
 	sql := "USE `" + params.Database + "`;" + queryTableChartsSQL
-	log.DefaultLogger.Info("执行SQL: %s", sql)
+	log.DefaultLogger.Info("Exec SQL: %s", sql)
 
 	// Step 3: 执行查询
 	ds := params.DS
@@ -262,7 +253,6 @@ func (a *App) handleTraces(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.DefaultLogger.Info("收到 get traces 请求")
 	paramsJSON, _ := json.Marshal(params)
 	log.DefaultLogger.Info(fmt.Sprintf("params: %s", paramsJSON))
 
@@ -270,7 +260,7 @@ func (a *App) handleTraces(w http.ResponseWriter, req *http.Request) {
 	queryTableChartsSQL := BuildTraceAggSQLFromParams(params)
 	// sql := `USE ` + params.Database + `;` + queryTableChartsSQL
 	sql := queryTableChartsSQL
-	log.DefaultLogger.Info(fmt.Sprintf("执行SQL: %s", sql))
+	log.DefaultLogger.Info(fmt.Sprintf("Exec SQL: %s", sql))
 
 	// Step 3: 执行查询
 	ds := params.DS
@@ -280,8 +270,6 @@ func (a *App) handleTraces(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, fmt.Sprintf("Query failed: %v", err), http.StatusInternalServerError)
 		return
 	}
-
-	log.DefaultLogger.Debug("查询到SQL结果", string(result))
 
 	// rawTraces, err := parseRawTracesFromGrafanaResult(result)
 	// if err != nil {
@@ -330,7 +318,6 @@ func (a *App) handleTableDataTrace(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.DefaultLogger.Info("收到 table_data 请求")
 	paramsJSON, _ := json.Marshal(params)
 	log.DefaultLogger.Info(fmt.Sprintf("params: %s", paramsJSON))
 
@@ -338,7 +325,7 @@ func (a *App) handleTableDataTrace(w http.ResponseWriter, req *http.Request) {
 	queryTableChartsSQL := GetQueryTableTraceSQL(params)
 	// sql := `USE ` + params.Database + `;` + queryTableChartsSQL
 	sql := "USE `" + params.Database + "`;" + queryTableChartsSQL
-	log.DefaultLogger.Info("执行SQL: %s", sql)
+	log.DefaultLogger.Info("Exec SQL: %s", sql)
 
 	// Step 3: 执行查询
 	ds := params.DS
@@ -373,7 +360,7 @@ func (a *App) handleSurroundingData(w http.ResponseWriter, req *http.Request) {
 	surroundingDataSQL := getSurroundingDataSQL(params)
 	// sql := `USE ` + params.Database + `;` + queryTableChartsSQL
 	sql := "USE `" + params.Database + "`;" + surroundingDataSQL
-	log.DefaultLogger.Info("执行SQL: %s", sql)
+	log.DefaultLogger.Info("Exec SQL: %s", sql)
 
 	// Step 3: 执行查询
 	ds := params.DS
@@ -430,7 +417,7 @@ func (a *App) handleTracesServices(w http.ResponseWriter, req *http.Request) {
 	tracesServicesSQL := GetServiceListSQL(params)
 	// sql := `USE ` + params.Database + `;` + queryTableChartsSQL
 	sql := "USE `" + params.Database + "`;" + tracesServicesSQL
-	log.DefaultLogger.Info("执行SQL: %s", sql)
+	log.DefaultLogger.Info("Exec SQL: %s", sql)
 
 	// Step 3: 执行查询
 	ds := params.DS
@@ -465,7 +452,7 @@ func (a *App) handleTracesOperations(w http.ResponseWriter, req *http.Request) {
 	tracesServicesSQL := GetOperationListSQL(params)
 	// sql := `USE ` + params.Database + `;` + queryTableChartsSQL
 	sql := "USE `" + params.Database + "`;" + tracesServicesSQL
-	log.DefaultLogger.Info("执行SQL: %s", sql)
+	log.DefaultLogger.Info("Exec SQL: %s", sql)
 
 	// Step 3: 执行查询
 	ds := params.DS

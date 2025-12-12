@@ -6,11 +6,10 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/app"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/selectdb/discover-app/pkg/plugin"
-	
 )
 
 func main() {
-	log.DefaultLogger.Info("插件后端启动成功", "detail", "some more context")
+	log.DefaultLogger.Info("Plugin backend run successfully", "detail", "some more context")
 	// Start listening to requests sent from Grafana. This call is blocking so
 	// it won't finish until Grafana shuts down the process or the plugin choose
 	// to exit by itself using os.Exit. Manage automatically manages life cycle

@@ -121,7 +121,7 @@ export function DiscoverHistogram() {
                                           color: ${theme === 'light' ? '#1F1F26' : '#EFEFF0'};
                                         ">
                                       <div style="padding-bottom: 4px; border-bottom: 1px solid ${theme === 'light' ? '#DFDFE0' : '#3F3F45'};">${[params[0].name]}</div>
-                                      <div style="padding-top:4px;display: flex;justify-content: space-between;"><span>计数：</span><span style="font-family:DIN Alternate;font-size:14;font-weight:500;">${[
+                                      <div style="padding-top:4px;display: flex;justify-content: space-between;"><span>Count:</span><span style="font-family:DIN Alternate;font-size:14;font-weight:500;">${[
                         params[0].value || 0,
                     ]}</span></div>
                                   </div>`;

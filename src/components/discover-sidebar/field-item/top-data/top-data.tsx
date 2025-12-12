@@ -65,7 +65,7 @@ export function TopData({ field }: any) {
                 >
                     TOP5
                 </div>
-                <small className="text-n2">{tableTotalCount >= 500 ? 500 : tableTotalCount} 条</small>
+                <small className="text-n2">{tableTotalCount >= 500 ? 500 : tableTotalCount} Items</small>
             </div>
             {canDisplayTopData ? (
                 <div className="mt-3 space-y-3 text-n5">

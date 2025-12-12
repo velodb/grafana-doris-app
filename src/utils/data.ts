@@ -652,8 +652,8 @@ export function formatTracesResData(frame: any) {
     const { data } = frame;
     const traceDataFrame: DataFrame = {
         name: 'Trace ID',
-        refId: frame.schema.refId || 'Trace ID',
-        fields: frame.schema.fields.map((f: any, i: number) => ({
+        refId: frame.schema?.refId || 'Trace ID',
+        fields: frame.schema?.fields.map((f: any, i: number) => ({
             name: f.name,
             type: f.type,
             values: data.values[i],
@@ -786,6 +786,19 @@ export function generateHighlightedResults(data: { search_value: string; indexes
                         }, '');
                     }
                 }
+            }
+
+            // ✅ 这里改成用 data-trace-id + class，方便事件委托识别
+            if (key === 'trace_id') {
+                const traceId = typeof itemValue === 'string' ? itemValue : String(itemValue);
+
+                const content = highlightValue || traceId;
+
+                highlightValue = `<a 
+                href="javascript:void(0)" 
+                class="trace-link" 
+                data-trace-id="${traceId}"
+            >${content}</a>`;
             }
 
             itemSource += `<span class="field-key">${key}:</span>${highlightValue} `;

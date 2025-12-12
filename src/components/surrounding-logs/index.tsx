@@ -414,9 +414,9 @@ export default function SurroundingLogs() {
                         row.getCanExpand() && (
                             <div className="flex items-center">
                                 {row.getIsExpanded() ? (
-                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-down" tooltip="收起" />
+                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-down" tooltip="Collapse" />
                                 ) : (
-                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-right" tooltip="展开" />
+                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-right" tooltip="Expand" />
                                 )}
                                 <div className="ml-1">{getValue<string>()}</div>
                             </div>

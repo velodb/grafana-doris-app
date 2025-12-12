@@ -85,7 +85,7 @@ export default function TracesHeader() {
                     setDatabases(options);
                 }
             },
-            error: (err: any) => console.log('查询错误', err),
+            error: (err: any) => console.log('Fetch Error', err),
         });
 
         return () => subscription.unsubscribe();
@@ -135,7 +135,7 @@ export default function TracesHeader() {
                 }
             },
             error: (err: any) => {
-                console.log('查询错误', err);
+                console.log('Fetch Error', err);
             },
         });
     }
@@ -176,7 +176,7 @@ export default function TracesHeader() {
                 }
             },
             error: (err: any) => {
-                console.log('查询错误', err);
+                console.log('Fetch Error', err);
             },
         });
     }
@@ -232,7 +232,7 @@ export default function TracesHeader() {
                                         setTables(options);
                                     }
                                 },
-                                error: (err: any) => console.log('查询错误', err),
+                                error: (err: any) => console.log('Fetch Error', err),
                             });
                         }}
                     ></Select>
