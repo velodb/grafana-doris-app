@@ -116,8 +116,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                         }
 
                         // check for JSON
-                        if ((cleanValue.startsWith('{') && cleanValue.endsWith('}')) ||
-                            (cleanValue.startsWith('[') && cleanValue.endsWith(']'))) {
+                        if ((cleanValue.startsWith('{') && cleanValue.endsWith('}')) || (cleanValue.startsWith('[') && cleanValue.endsWith(']'))) {
                             try {
                                 const parsed = JSON.parse(cleanValue);
                                 value = processObject(parsed);
@@ -138,8 +137,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                                     } catch (e) {}
                                 }
 
-                                if ((cleanItem.startsWith('{') && cleanItem.endsWith('}')) ||
-                                    (cleanItem.startsWith('[') && cleanItem.endsWith(']'))) {
+                                if ((cleanItem.startsWith('{') && cleanItem.endsWith('}')) || (cleanItem.startsWith('[') && cleanItem.endsWith(']'))) {
                                     try {
                                         const parsed = JSON.parse(cleanItem);
                                         return processObject(parsed);
@@ -172,13 +170,13 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
         return (
             <div
                 className={css`
-                position: relative;
-            `}
+                    position: relative;
+                `}
             >
                 <TabsBar
                     className={css`
-                    ${theme.isDark ? 'background-color: hsl(var(--n9) / 0.4);' : 'background-color: hsl(var(--b1) / 0.6);'}
-                `}
+                        ${theme.isDark ? 'background-color: hsl(var(--n9) / 0.4);' : 'background-color: hsl(var(--b1) / 0.6);'}
+                    `}
                 >
                     {state.map((tab, index) => {
                         return (
@@ -205,95 +203,93 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                         <table
                             // className="bg-b1/20 pl-4 backdrop-blur-md dark:bg-n9/60"
                             className={css`
-                            padding-left: 16px;
-                            backdrop-filter: blur(12px);
-                            -webkit-backdrop-filter: blur(12px);
-                            width: 100%;
-                            ${theme.isDark ? 'background-color: hsl(var(--n9) / 0.6);' : 'background-color: hsl(var(--b1) / 0.2)'}
-                        `}
+                                padding-left: 16px;
+                                backdrop-filter: blur(12px);
+                                -webkit-backdrop-filter: blur(12px);
+                                width: 100%;
+                                ${theme.isDark ? 'background-color: hsl(var(--n9) / 0.6);' : 'background-color: hsl(var(--b1) / 0.2)'}
+                            `}
                         >
                             <tbody>
-                            {subTableData.map((item: any) => {
-                                let fieldValue = item.value;
-                                const fieldName = item.field;
-                                if (typeof fieldValue === 'object') {
-                                    fieldValue = JSON.stringify(fieldValue);
-                                }
-                                const tableRowStyle = css`
-                                    &:hover {
-                                        .filter-table-content {
-                                            visibility: visible;
-                                        }
+                                {subTableData.map((item: any) => {
+                                    let fieldValue = item.value;
+                                    const fieldName = item.field;
+                                    if (typeof fieldValue === 'object') {
+                                        fieldValue = JSON.stringify(fieldValue);
                                     }
-                                `;
-                                return (
-                                    <tr className={`${tableRowStyle}`} key={fieldName}>
-                                        <td
-                                            className={css`
-                                                height: 32px;
-                                                width: 70px;
-                                            `}
-                                        >
-                                            <div
-                                                className={`filter-table-content ${css`
-                                                    visibility: hidden;
-                                                `}`}
-                                            >
-                                                <ContentTableActions fieldName={fieldName} fieldValue={fieldValue} />
-                                            </div>
-                                        </td>
-                                        <td
-                                            className={css`
-                                                height: 32px;
-                                                font-size: 12px;
-                                            `}
-                                        >
-                                            {fieldName || '-'}
-                                        </td>
-                                        <td
-                                            className={css`
-                                                height: 32px;
-                                                font-size: 12px;
-                                                white-space: normal;
-                                            `}
-                                        >
-                                            <div
+                                    const tableRowStyle = css`
+                                        &:hover {
+                                            .filter-table-content {
+                                                visibility: visible;
+                                            }
+                                        }
+                                    `;
+                                    return (
+                                        <tr className={`${tableRowStyle}`} key={fieldName}>
+                                            <td
                                                 className={css`
-                                                    width: 100%;
-                                                    word-break: break-all;
+                                                    height: 32px;
+                                                    width: 70px;
                                                 `}
                                             >
-                                                {fieldValue || '-'}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
+                                                <div
+                                                    className={`filter-table-content ${css`
+                                                        visibility: hidden;
+                                                    `}`}
+                                                >
+                                                    <ContentTableActions fieldName={fieldName} fieldValue={fieldValue} />
+                                                </div>
+                                            </td>
+                                            <td
+                                                className={css`
+                                                    height: 32px;
+                                                    font-size: 12px;
+                                                `}
+                                            >
+                                                {fieldName || '-'}
+                                            </td>
+                                            <td
+                                                className={css`
+                                                    height: 32px;
+                                                    font-size: 12px;
+                                                    white-space: normal;
+                                                `}
+                                            >
+                                                <div
+                                                    className={css`
+                                                        width: 100%;
+                                                        word-break: break-all;
+                                                    `}
+                                                >
+                                                    {fieldValue || '-'}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     )}
                     {state[1].active && (
                         <div>
-            <pre
-                className={css`
-                    padding: 16px;
-                    margin: 0;
-                    overflow-x: auto;
-                    white-space: pre-wrap;
-                    word-break: break-all;
-                    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-                    font-size: 12px;
-                    line-height: 1.5;
-                    ${theme.isDark
-                    ? 'background-color: #1e1e1e; color: #d4d4d4;'
-                    : 'background-color: #f5f5f5; color: #333;'}
-                    border-radius: 4px;
-                    max-height: 400px;
-                    overflow-y: auto;
-                `}
-            >
-                {JSON.stringify(processedData, null, 2)}
-            </pre>
+                            <pre
+                                className={css`
+                                    padding: 16px;
+                                    margin: 0;
+                                    overflow-x: auto;
+                                    white-space: pre-wrap;
+                                    word-break: break-all;
+                                    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+                                    font-size: 12px;
+                                    line-height: 1.5;
+                                    ${theme.isDark ? 'background-color: #1e1e1e; color: #d4d4d4;' : 'background-color: #f5f5f5; color: #333;'}
+                                    border-radius: 4px;
+                                    max-height: 400px;
+                                    overflow-y: auto;
+                                `}
+                            >
+                                {JSON.stringify(processedData, null, 2)}
+                            </pre>
                         </div>
                     )}
                 </TabContent>
@@ -304,22 +300,21 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                         setSelectedRow(row.original);
                     }}
                     className={css`
-                    position: absolute;
-                    right: 1rem;
-                    top: 0;
-                    cursor: pointer;
-                    padding-top: 0.5rem;
-                    &:hover {
-                        color: rgb(43, 102, 253);
-                    }
-                `}
+                        position: absolute;
+                        right: 1rem;
+                        top: 0;
+                        cursor: pointer;
+                        padding-top: 0.5rem;
+                        &:hover {
+                            color: rgb(43, 102, 253);
+                        }
+                    `}
                 >
                     Surrounding Logs
                 </a>
             </div>
         );
     };
-
 
     const openTraceDrawer = (traceId: string) => {
         // request
@@ -575,7 +570,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                     }}
                 />
             </div>
-            <TraceDetail onClose={() => setDrawerOpen(false)} open={drawerOpen} traceId={selectedRow?.trace_id} traceTable='otel_traces' />
+            <TraceDetail onClose={() => setDrawerOpen(false)} open={drawerOpen} traceId={selectedRow?.trace_id} traceTable="otel_traces" />
 
             {surroundingLogsOpen && (
                 <Drawer
