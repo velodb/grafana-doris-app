@@ -124,7 +124,7 @@ export default function DiscoverSidebar() {
                             >
                                 {selectedFields
                                     .filter((field: any) => {
-                                        return field['Field'].includes(searchValue);
+                                        return field['Field'].toLowerCase().includes(searchValue.toLowerCase());
                                     })
                                     .map((field: any, index) => (
                                         <FieldItem type="remove" key={index} field={field} onRemove={field => handleRemove(field)} />
@@ -160,7 +160,7 @@ export default function DiscoverSidebar() {
                     >
                         {availableFields
                             .filter((field: any) => {
-                                return field['Field'].includes(searchValue);
+                                return field['Field'].toLowerCase().includes(searchValue.toLowerCase());
                             })
                             .map((field: any, index) => (
                                 <FieldItem type="add" field={field} key={index} onAdd={field => handleAdd(field)} />
