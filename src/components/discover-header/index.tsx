@@ -281,7 +281,7 @@ export default function DiscoverHeader(
                 </Field>
                 {searchType === 'Lucene' ? (
                     <Field label="Lucene" style={{ width: '100%' }}>
-                        <Lucene />
+                        <Lucene onQuerying={() => props?.onQuerying()} />
                     </Field>
                 ) : (
                     <Field label={searchMode ? 'Search' : 'SQL'} style={{ width: '100%' }}>
