@@ -83,7 +83,7 @@ export function getQueryTableResultCountSQL(params: QueryTableDataParams) {
 
 export function getSurroundingSQL(params: SurroundingParams) {
     let statement = `SELECT * FROM \`${params.database}\`.\`${params.table}\` WHERE`;
-    statement += ` (${params.timeField} ${params.operator} '${params.time}')`;
+    statement += ` (\`${params.timeField}\` ${params.operator} '${params.time}')`;
     statement = params.data_filters.reduce((prev: any, curr: any) => {
         return addSqlFilter(prev, curr);
     }, statement);
