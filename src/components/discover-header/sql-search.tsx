@@ -37,9 +37,24 @@ export default function SQLSearch({ style, onQuerying }: { style?: CSSProperties
         console.log(e);
         setSearchValue(e.target?.value);
       }}
+      onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+        // Ignore composition (IME) events
+        const native = (e as any).nativeEvent;
+        if (e.key === 'Enter' && !(native && native.isComposing)) {
+          // Trigger query callback if provided
+          try {
+            onQuerying?.();
+          } catch (err) {
+            // swallow errors from callback to avoid breaking the input
+            // eslint-disable-next-line no-console
+            console.error('onQuerying handler error:', err);
+          }
+        }
+      }}
       placeholder={
         searchType === 'SQL' ? "SQL WHERE. e.g.(event_type = 'ForkApplyEvent AND action = 'none')" : 'Keyword'
       }
+      style={style}
     />
     // <CodeEditor language="mysql" value={searchValue} height={28} width={600} getSuggestions={getSuggestions} showMiniMap={false} showLineNumbers={false} />
     // <AutoComplete
