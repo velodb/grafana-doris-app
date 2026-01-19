@@ -117,6 +117,8 @@ export function useDiscoverData() {
             next: async ({ data, ok }: any) => {
                 setLoading(prev => ({ ...prev, getTableData: false }));
                 if (!ok) {
+                    // Clear table data when backend reports failure so UI does not display stale results
+                    setTableData([]);
                     return;
                 }
                 const frames = data?.results?.getTableData?.frames;
@@ -138,6 +140,8 @@ export function useDiscoverData() {
             },
             error: (err: any) => {
                 setLoading(prev => ({ ...prev, getTableData: false }));
+                // Clear table data on network / connection errors to ensure UI refreshes
+                setTableData([]);
                 console.log('Fetch Error', err);
             },
         });
@@ -214,6 +218,8 @@ export function useDiscoverData() {
             next: ({ data, ok }: any) => {
                 setLoading(prev => ({ ...prev, getTableDataCharts: false }));
                 if (!ok) {
+                    // Clear charts when backend reports failure
+                    setTableDataCharts([]);
                     return;
                 }
                 const frame = toDataFrame(data.results.getTableDataCharts.frames[0]);
@@ -232,6 +238,8 @@ export function useDiscoverData() {
             },
             error: (err: any) => {
                 setLoading(prev => ({ ...prev, getTableDataCharts: false }));
+                // Clear charts on network / connection errors
+                setTableDataCharts([]);
                 console.log('Fetch Error', err);
             },
         });
@@ -382,7 +390,10 @@ export function useDiscoverData() {
             ...payload,
         }).subscribe({
             next: ({ data, ok }: any) => {
+                setLoading(prev => ({ ...prev, getTableDataCount: false }));
                 if (!ok) {
+                    // Clear count when backend reports failure
+                    setTableTotalCount(0);
                     return;
                 }
                 const frame = toDataFrame(data.results.getTableCountData.frames[0]);
@@ -394,6 +405,8 @@ export function useDiscoverData() {
                 setTableTotalCount(totalCount);
             },
             error: (err: any) => {
+                // Ensure we clear the count on error so UI doesn't keep previous value
+                setTableTotalCount(0);
                 console.log('Fetch Error', err);
             },
         });
@@ -453,6 +466,8 @@ export function useDiscoverData() {
                     setTraceData(formattedData);
                 },
                 error: (err: any) => {
+                    // Clear trace data on error
+                    setTraceData([]);
                     console.log('Fetch Error', err);
                 },
             });
