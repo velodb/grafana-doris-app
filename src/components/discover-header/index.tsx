@@ -5,7 +5,7 @@ import { DiscoverHeaderSearch } from './discover-header.style';
 import SearchType from './search-type';
 import SQLSearch from './sql-search';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { DataSourcePicker, getDataSourceSrv } from '@grafana/runtime';
+import { DataSourcePicker } from '@grafana/runtime';
 import { css } from '@emotion/css';
 import {
     indexesAtom,
@@ -26,7 +26,6 @@ import {
     databasesAtom,
     tablesAtom,
     currentTableAtom,
-    disabledOptionsAtom,
 } from 'store/discover';
 import { getLatestTime, isValidTimeFieldType } from 'utils/data';
 import { Select, Field, Button, useTheme2, TimeRangeInput } from '@grafana/ui';
@@ -56,7 +55,7 @@ export default function DiscoverHeader(
     const [timeFields, setTimeFields] = useAtom(timeFieldsAtom);
     const [_currentDate, setCurrentDate] = useAtom(currentDateAtom);
     const currentTimeField = useAtomValue(currentTimeFieldAtom);
-    const [currentIndex, setCurrentIndex] = useAtom(currentIndexAtom);
+    const [, setCurrentIndex] = useAtom(currentIndexAtom);
     const searchFocus = useAtomValue(searchFocusAtom);
     // const { databaseList } = useDatabaseList();
     const [activeItem, _setActiveItem] = useAtom(activeShortcutAtom);
@@ -71,34 +70,19 @@ export default function DiscoverHeader(
     const [currentTable, setCurrentTable] = useAtom(currentTableAtom);
     const [databases, setDatabases] = useAtom(databasesAtom);
     const [tables, setTables] = useAtom(tablesAtom);
-    const [_datasources, setDataSource] = useAtom(datasourcesAtom);
-    const setDisabledOptions = useSetAtom(disabledOptionsAtom);
+    const [_datasources] = useAtom(datasourcesAtom);
     const searchType = useAtomValue(searchTypeAtom);
     const searchMode = searchType === 'Search';
 
     const selectdbDS = useAtomValue(selectedDatasourceAtom);
-
-    useEffect(() => {
-        const datasources = getDataSourceSrv().getList();
-        setDataSource(datasources);
-    }, [setDataSource]);
-
-    useEffect(() => {
-        if (currentIndex.length > 0) {
-            setDisabledOptions([]);
-        } else {
-            setDisabledOptions(['Search']);
-        }
-    }, [currentIndex, setDisabledOptions]);
-
     const theme = useTheme2();
 
-    useEffect(() => {
-        if (!selectdbDS) {
-            return;
+    const fetchDatabases = React.useCallback((ds: any) => {
+        if (!ds) {
+            return undefined;
         }
 
-        const subscription: Subscription = getDatabases(selectdbDS).subscribe({
+        return getDatabases(ds).subscribe({
             next: (resp: any) => {
                 const { data, ok } = resp;
                 if (ok) {
@@ -110,9 +94,17 @@ export default function DiscoverHeader(
             },
             error: (err: any) => console.log('Fetch Error', err),
         });
+    }, [setDatabases]);
 
-        return () => subscription.unsubscribe();
-    }, [selectdbDS, setDatabases]);
+    useEffect(() => {
+        if (!selectdbDS) {
+            return;
+        }
+
+        const subscription: Subscription | undefined = fetchDatabases(selectdbDS);
+
+        return () => subscription?.unsubscribe();
+    }, [selectdbDS, fetchDatabases]);
 
     function getFields(selectedTable: any) {
         getFieldsService({
@@ -218,18 +210,20 @@ export default function DiscoverHeader(
                 <Field label="Datasource">
                     {/* filter 这个版本无效 */}
                     <DataSourcePicker
-                        width={20}
-                        type={'mysql'}
-                        current={selectedDatasource}
-                        placeholder="Choose"
-                        noDefault
-                        filter={ds => ds.type === 'mysql'}
-                        onChange={item => {
-                            console.log('item', item);
-                            setSelectedDatasource(item);
-                        }}
-                    />
-                </Field>
+                         width={20}
+                         type={'mysql'}
+                         current={selectedDatasource}
+                         placeholder="Choose"
+                         noDefault
+                         filter={ds => ds.type === 'mysql'}
+                         onChange={item => {
+                             console.log('item', item);
+                             setSelectedDatasource(item);
+                             // Always fetch databases even if the same datasource is selected
+                             fetchDatabases(item);
+                         }}
+                     />
+                 </Field>
                 {/* 需要从数据源中获取库表信息 */}
                 <Field label="Database" style={{ marginLeft: 8 }}>
                     <Select
