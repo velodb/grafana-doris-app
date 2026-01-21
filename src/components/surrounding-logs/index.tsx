@@ -412,7 +412,7 @@ export default function SurroundingLogs() {
                 cell: ({ row, getValue }) => {
                     return (
                         row.getCanExpand() && (
-                            <div className="flex items-center">
+                            <div>
                                 {row.getIsExpanded() ? (
                                     <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-down" tooltip="Collapse" />
                                 ) : (

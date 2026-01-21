@@ -812,3 +812,5 @@ export function generateHighlightedResults(data: { search_value: string; indexes
 
     return _sourceResult;
 }
+
+export const QUERY_TRACE_FIELDS = ['trace_id','span_id','parent_span_id','span_name','service_name']

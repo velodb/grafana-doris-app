@@ -2,16 +2,18 @@ import { useAtom, useAtomValue } from 'jotai';
 import React from 'react';
 import { nanoid } from 'nanoid';
 import { Select, InlineField, InlineFieldRow, InlineSwitch, Button, Input, Field } from '@grafana/ui';
-import { tableFieldsAtom, dataFilterAtom, tableFieldValuesAtom } from 'store/discover';
+import { tableFieldsAtom, dataFilterAtom, tableFieldValuesAtom, tableDataAtom } from 'store/discover';
 import { DataFilterType, Operator } from 'types/type';
 import { OPERATORS } from 'utils/data';
 import { Controller, useForm } from 'react-hook-form';
 import { containerStyle, rowStyle, colStyle, footerStyle } from './discover-filter.style';
+import { uniqBy } from 'lodash-es';
 
 export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void; dataFilterValue?: DataFilterType }) {
     const tableFields = useAtomValue(tableFieldsAtom);
     const [dataFilter, setDataFilter] = useAtom(dataFilterAtom);
-    const tableFieldValue = useAtomValue(tableFieldValuesAtom);
+    const [tableFieldValue, setTableFieldValue] = useAtom(tableFieldValuesAtom);
+    const tableData = useAtomValue(tableDataAtom);
 
     const {
         control,
@@ -65,7 +67,6 @@ export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void;
             label,
             value: newValue,
         };
-
         if (current) {
             const updated = dataFilter.map(f => (f.id === id ? newItem : f));
             setDataFilter(updated);
@@ -162,9 +163,18 @@ export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void;
                             name="field"
                             control={control}
                             rules={{ required: 'Select Field' }}
+
                             render={({ field }) => (
                                 <Select
                                     {...field}
+                                    onChange={(selected) => {
+                                        setTableFieldValue(uniqBy(tableData.map((item) => ({
+                                            label: selected.value,
+                                            value: item._original[selected.value]
+                                        })), 'value'))
+                                        field.onChange(selected)
+                                    }}
+
                                     options={tableFields.map(f => ({
                                         label: f.Field,
                                         value: f.Field,

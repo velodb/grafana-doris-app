@@ -35,6 +35,7 @@ import {
     getIndexesStatement,
 } from 'utils/data';
 import { generateTableDataUID } from 'utils/utils';
+import { message } from 'antd';
 import { FORMAT_DATE, getAutoInterval, IntervalEnum } from '../../constants';
 import { toDataFrame } from '@grafana/data';
 import { useLuceneWhereClause } from './useLuceneWhereClause';
@@ -414,12 +415,12 @@ export function useDiscoverData() {
     ]);
 
     const getTraceData = useCallback(
-        (trace_id: string) => {
+        (trace_id: string, table?: string, callback?: Function) => {
             const indexesStatement = getIndexesStatement(currentIndexes, tableFields, searchValue);
             const payload: any = {
                 catalog: currentCatalog,
                 database: currentDatabase,
-                table: currentTable || 'otel_traces',
+                table: table || currentTable || 'otel_traces',
                 timeField: currentTimeField,
                 startDate: currentDate[0]?.format(FORMAT_DATE),
                 endDate: (currentDate[1] as Dayjs).format(FORMAT_DATE),
@@ -431,10 +432,10 @@ export function useDiscoverData() {
                 page_size: pageSize,
                 trace_id,
             };
-
             if (searchType === 'Search') {
                 payload.indexes_statement = indexesStatement;
             }
+
             payload.data_filters = dataFilter.length > 0 ? dataFilter : [];
 
             if (searchValue) {
@@ -446,7 +447,9 @@ export function useDiscoverData() {
                 ...payload,
             }).subscribe({
                 next: ({ data, ok }: any) => {
+                    callback && callback(data.results.getTableDataTrace.status)
                     if (!ok) {
+                        message.error('Failed to request trace');
                         return;
                     }
                     const formattedData = formatTracesResData(data.results.getTableDataTrace.frames[0]);
@@ -454,6 +457,9 @@ export function useDiscoverData() {
                 },
                 error: (err: any) => {
                     console.log('Fetch Error', err);
+                    callback && callback(err.status)
+                    message.error('Failed to request trace');
+                    setTraceData(null);
                 },
             });
         },

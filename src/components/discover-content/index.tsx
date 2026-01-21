@@ -2,7 +2,7 @@
 import { ColumnDef, Row } from '@tanstack/react-table';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { Drawer, IconButton, Pagination, Tab, TabContent, TabsBar, useTheme2 } from '@grafana/ui';
+import { Select, Drawer, IconButton, Pagination, Tab, TabContent, TabsBar, useTheme2 } from '@grafana/ui';
 import {
     tableTotalCountAtom,
     tableDataAtom,
@@ -16,9 +16,11 @@ import {
     surroundingDataFilterAtom,
     surroundingSelectedFieldsAtom,
     currentTimeFieldAtom,
+    tablesAtom,
+    tableFieldsAtom
 } from 'store/discover';
 import { get } from 'lodash-es';
-import { Button as AntButton } from 'antd';
+import { Button as AntButton, Tooltip as AntTooltip } from 'antd';
 import SDCollapsibleTable from 'components/selectdb-ui/sd-collapsible-table';
 import { ColumnStyleWrapper, HoverStyle } from './discover-content.style';
 import { css } from '@emotion/css';
@@ -26,15 +28,19 @@ import { ContentTableActions } from './content-table-actions';
 import { ContentItem } from './content-item';
 import SurroundingLogs from 'components/surrounding-logs';
 import TraceDetail from 'components/trace-detail';
+import { QUERY_TRACE_FIELDS } from 'utils/data';
 
-export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetchNextPage: (page: number) => void; getTraceData: (traceId: string) => any }) {
+export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetchNextPage: (page: number) => void; getTraceData: (traceId: string, table?: string,callback?: Function) => any }) {
     const theme = useTheme2();
     const [fields, setFields] = useState<any[]>([]);
+    const [currentSelectTable, setCurrentSelectTable] = useState();
     const tableTotalCount = useAtomValue(tableTotalCountAtom);
     const [tableData, _setTableData] = useAtom(tableDataAtom);
     const [selectedFields, setSelectedFields] = useAtom(selectedFieldsAtom);
     const hasSelectedFields = selectedFields.length > 0;
     const currentTimeField = useAtomValue(currentTimeFieldAtom);
+    const tableFields = useAtomValue(tableFieldsAtom)
+    const tables = useAtomValue(tablesAtom);
     // const [surroundingOpen, setSurroundingOpen] = useState(false);
     const [selectedRow, setSelectedRow] = useAtom(selectedRowAtom);
     const setSurroundingTableData = useSetAtom(surroundingTableDataAtom);
@@ -47,6 +53,8 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [surroundingLogsOpen, setSurroundingLogsOpen] = useState(false);
     const [_fieldKeyBg, setFieldKeyBg] = useState<string>('#3f3f4f');
+
+    const IS_TRACE_TABLE = QUERY_TRACE_FIELDS.every((field) => !!tableFields.find((item) => item.value === field))
 
     useEffect(() => {
         if (theme.isDark) {
@@ -134,7 +142,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                                 if (cleanItem.includes('\\"')) {
                                     try {
                                         cleanItem = JSON.parse(`"${cleanItem}"`);
-                                    } catch (e) {}
+                                    } catch (e) { }
                                 }
 
                                 if ((cleanItem.startsWith('{') && cleanItem.endsWith('}')) || (cleanItem.startsWith('[') && cleanItem.endsWith(']'))) {
@@ -316,10 +324,15 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
         );
     };
 
-    const openTraceDrawer = (traceId: string) => {
+    const callback = (status: number) => {
+        if (status >= 200 && status <= 299) {
+            setDrawerOpen(true)
+        }
+    }
+
+    const openTraceDrawer = (traceId: string, table?: string) => {
         // request
-        setDrawerOpen(true);
-        getTraceData(traceId);
+        getTraceData(traceId, table, callback);
     };
 
     const columns = useMemo<Array<ColumnDef<any>>>(() => {
@@ -398,8 +411,6 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                         if (!traceId) {
                             return;
                         }
-
-                        console.log('traceId', traceId);
 
                         e.preventDefault();
                         openTraceDrawer(traceId);
@@ -497,18 +508,40 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                                             className={css`
                                                 display: flex;
                                                 align-items: center;
-                                                padding: 16px;
+                                                padding: 16px 16px 16px 0;
                                                 word-break: break-all;
                                             `}
                                         >
-                                            {field.value === 'trace_id' ? (
-                                                <AntButton onClick={() => openTraceDrawer(fieldValue)} type="link">
-                                                    {fieldValue}
-                                                </AntButton>
+                                            {field.value === 'trace_id' ? IS_TRACE_TABLE ? <AntButton
+                                                className={css`padding-left: 0px;`}
+                                                onClick={() => openTraceDrawer(fieldValue)}
+                                                type="link">
+                                                {fieldValue}
+                                            </AntButton> : (
+                                                <div>
+                                                    <AntTooltip title={<div>
+                                                        <Select onChange={(selectedTable: any) => {
+                                                            openTraceDrawer(fieldValue, selectedTable.value)
+                                                            setCurrentSelectTable(selectedTable.value);
+                                                            localStorage.setItem('logMapTraceTable', selectedTable.value);
+                                                        }} value={currentSelectTable} width={15} options={tables} />
+                                                    </div>}>
+                                                        <AntButton
+                                                            className={css`padding-left: 0px;`}
+                                                            type="link">
+                                                            {fieldValue}
+                                                        </AntButton>
+                                                    </AntTooltip>
+                                                </div>
+
                                             ) : (
                                                 <span
                                                     className={css`
                                                         font-size: 12px;
+                                                        white-space: nowrap;
+                                                        text-overflow: ellipsis;
+                                                        overflow: hidden;
+                                                        max-width: 200px;
                                                     `}
                                                 >
                                                     {fieldValue}

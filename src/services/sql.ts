@@ -125,7 +125,7 @@ export function getFilterSQL({ fieldName, operator, value }: DataFilterType): st
     }
 
     if (operator === 'in' || operator === 'not in') {
-        return `${transformedFieldName} ${operator} (${valueString})`;
+        return `${transformedFieldName} ${operator} ('${valueString}')`;
     }
 
     return '';
