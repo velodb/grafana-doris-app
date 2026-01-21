@@ -79,11 +79,16 @@ export default function SurroundingLogs() {
         setSelectedSurroundingFields([...selectedSurroundingFields]);
     }
 
+    const getAfterResultWrap = (result: any[]) => {
+        const [_, ...newResult] = result;
+        return newResult;
+    }
+
     const { loading: getAfterSurroundingDataLoading, run: getAfterSurroundingData } = useRequest(
         ({ pageSize = afterTimeFieldPageSize, time = afterTime }: any) => {
             console.log(time);
             const params: SurroundingParams = getQueryParams({
-                pageSize,
+                pageSize: pageSize + 1,
                 operator: '>',
                 time,
             });
@@ -101,11 +106,11 @@ export default function SurroundingLogs() {
             onSuccess: async (res: any, params: any) => {
                 if (res.ok) {
                     const rowsData = convertColumnToRow(res.data.results.getSurroundingData.frames[0]);
-                    const result = generateSurroundingResult(rowsData, currentTimeField);
+                    const result = getAfterResultWrap(generateSurroundingResult(rowsData, currentTimeField));
                     let data = [...surroundingTableData];
                     data.push(...result);
-                    setAfterCount(afterCount + data.length);
-                    setAfterTime(result[0]._original[currentTimeField]);
+                    setAfterCount(afterCount + result.length);
+                    setAfterTime(result[result.length - 1]._original[currentTimeField]);
                     setSurroundingTableData(data);
                     // setTimeout(() => {
                     //     scrollToSelectedRow();
@@ -156,9 +161,9 @@ export default function SurroundingLogs() {
                     const rowsData = convertColumnToRow(res.data.results.getSurroundingData.frames[0]);
                     const result = generateSurroundingResult(rowsData, currentTimeField);
                     let data = [...surroundingTableData];
-                    data.unshift(...res.data);
+                    data.unshift(...result);
                     setBeforeCount(beforeCount + result.length);
-                    setBeforeTime(res.data[0]._original[currentTimeField]);
+                    setBeforeTime(result[0]._original[currentTimeField]);
                     setSurroundingTableData(data);
                     // setTimeout(() => {
                     //     scrollToSelectedRow();
@@ -182,6 +187,7 @@ export default function SurroundingLogs() {
             });
             const afterTimeParams: SurroundingParams = getQueryParams({
                 operator: '>',
+                pageSize: 6
             });
             return Promise.all([
                 lastValueFrom(
@@ -205,19 +211,20 @@ export default function SurroundingLogs() {
                     const rowsData1 = convertColumnToRow(res[0].data.results.getSurroundingData.frames[0]);
                     const rowsData2 = convertColumnToRow(res[1].data.results.getSurroundingData.frames[0]);
                     const result1 = generateSurroundingResult(rowsData1, currentTimeField);
-                    const result2 = generateSurroundingResult(rowsData2, currentTimeField);
+                    const result2 = getAfterResultWrap(generateSurroundingResult(rowsData2, currentTimeField));
                     const selectedResult = generateSurroundingResult([selectedRow._original], currentTimeField);
                     const data = [...result1, ...selectedResult, ...result2];
                     const rowsDataWithUid = await generateTableDataUID(data);
+
                     if (result1.length > 0) {
                         setBeforeCount(result1.length);
                         setBeforeTime(result1[0]._original[currentTimeField]);
                     } else {
                         setBeforeTime(selectedRow.time);
                     }
-                    if (result1.length > 0) {
-                        setAfterCount(result1.length);
-                        setAfterTime(result1[0]._original[currentTimeField]);
+                    if (result2.length > 0) {
+                        setAfterCount(result2.length);
+                        setAfterTime(result2[result2.length - 1]._original[currentTimeField]);
                     } else {
                         setAfterTime(selectedRow.time);
                     }
@@ -392,15 +399,15 @@ export default function SurroundingLogs() {
                 if (typeof highlightValue === 'object') {
                     highlightValue = JSON.stringify(highlightValue);
                 }
-                itemSource += `<span style="background-color: ${
-                    theme.isDark ? '#3F3F4F' : '#BED8FD'
-                } ; padding: 0px 4px 2px; margin-right: 4px; border-radius: 4px;">${key}:</span>${highlightValue} `;
+                itemSource += `<span style="background-color: ${theme.isDark ? '#3F3F4F' : '#BED8FD'
+                    } ; padding: 0px 4px 2px; margin-right: 4px; border-radius: 4px;">${key}:</span>${highlightValue} `;
             }
             return {
                 _original: item,
                 _source: itemSource,
             };
         });
+
         return _sourceResult;
     }
 

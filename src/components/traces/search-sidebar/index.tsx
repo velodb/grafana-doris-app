@@ -7,6 +7,7 @@ import { useAtom, useAtomValue } from 'jotai';
 import { currentOperationAtom, currentServiceAtom, maxDurationAtom, minDurationAtom, tagsAtom, traceOperationsAtom, tracesServicesAtom } from 'store/traces';
 import { css } from '@emotion/css';
 import { currentTimeFieldAtom } from 'store/discover';
+import { trimSpacesAroundEquals } from 'utils/utils';
 
 export function SearchSidebar(props: {
     onQuerying?: () => void;
@@ -91,7 +92,8 @@ export function SearchSidebar(props: {
                             value={tags}
                             onChange={e => {
                                 console.log((e.target as HTMLInputElement)?.value);
-                                setTags((e.target as HTMLInputElement)?.value);
+                                const value = trimSpacesAroundEquals((e.target as HTMLInputElement)?.value);
+                                setTags(value);
                             }}
                         />
                     </Field>

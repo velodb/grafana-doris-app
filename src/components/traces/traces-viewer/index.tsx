@@ -8,7 +8,7 @@ import { pageAtom, pageSizeAtom } from 'store/discover';
 import { currentSortAtom } from 'store/traces';
 import TraceDetail from 'components/trace-detail';
 
-export const TraceView: React.FC<any> = ({ traces: propTraces, onSortByChange }) => {
+export const TraceView: React.FC<any> = React.memo(({ traces: propTraces, onSortByChange }) => {
     const theme = useTheme2();
     const [page, setPage] = useAtom(pageAtom);
     const pageSize = useAtomValue(pageSizeAtom);
@@ -18,7 +18,7 @@ export const TraceView: React.FC<any> = ({ traces: propTraces, onSortByChange })
     const [sort, setSort] = useAtom(currentSortAtom);
     const [drawerOpen, setDrawerOpen] = React.useState(false);
     const [traceId, setTraceId] = React.useState<string>('');
-
+    
     // 预处理 series 数据，计算 symbolSize
     const seriesData = useMemo(() => {
         return traces.map(s => ({
@@ -186,4 +186,4 @@ export const TraceView: React.FC<any> = ({ traces: propTraces, onSortByChange })
             <TraceDetail onClose={() => setDrawerOpen(false)} open={drawerOpen} traceId={traceId} />
         </div>
     );
-};
+}) ;
