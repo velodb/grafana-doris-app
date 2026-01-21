@@ -81,11 +81,11 @@ function tagsToDorisSQLConditions(tags?: string): string {
     }
     const conditions: string[] = [];
 
-    const regex = /(\w+)=([^\s]+)/g;
+    const regex = /([\w.]+)=(?:"([^"]+)"|'([^']+)'|([^\s]+))/g;
     let match: RegExpExecArray | null;
     while ((match = regex.exec(tags)) !== null) {
         const key = match[1];
-        const val = match[2];
+        const val = match[2] || match[3] || match[4];
         conditions.push(`span_attributes['${key}'] = '${val}'`);
     }
 
