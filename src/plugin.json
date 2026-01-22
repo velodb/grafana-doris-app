@@ -3,7 +3,7 @@
   "type": "app",
   "name": "Doris App",
   "id": "doris-app",
-  "backend": true,
+  "backend": false,
   "executable": "gpx_doris-app",
   "info": {
     "keywords": ["app"],
