@@ -2,9 +2,9 @@ import { useAtom, useAtomValue } from 'jotai';
 import React from 'react';
 import { nanoid } from 'nanoid';
 import { Select, InlineField, InlineFieldRow, InlineSwitch, Button, Input, Field } from '@grafana/ui';
-import { tableFieldsAtom, dataFilterAtom, tableFieldValuesAtom, surroundingDataFilterAtom } from 'store/discover';
+import { tableFieldsAtom, tableFieldValuesAtom, surroundingDataFilterAtom } from 'store/discover';
 import { Operator } from 'types/type';
-import { OPERATORS } from 'utils/data';
+import { OPERATORS, getFieldType } from 'utils/data';
 import { Controller, useForm } from 'react-hook-form';
 import { containerStyle, rowStyle, colStyle, footerStyle } from './discover-filter.style';
 import { FilterContentProps } from '../types';
@@ -14,7 +14,9 @@ export function FilterContent(props: FilterContentProps) {
     const [surroundingDataFilter, setSurroundingDataFilter] = useAtom(surroundingDataFilterAtom);
     const tableFields = useAtomValue(tableFieldsAtom);
     if (process.env.NODE_ENV !== 'production') {
-        dataFilterAtom.debugLabel = 'dataFilter';
+        // add a debug label for dev to help with jotai debugging
+        // @ts-ignore
+        surroundingDataFilterAtom.debugLabel = 'surroundingDataFilter';
     }
     const tableFieldValue = useAtomValue(tableFieldValuesAtom);
 
@@ -41,31 +43,118 @@ export function FilterContent(props: FilterContentProps) {
             showLabel: !!dataFilterValue?.label, // Initialize based on dataFilterValue
         },
     });
-    const operator = watch('operator');
+    const field: any = watch('field');
+    const operator: any = watch('operator');
     const showLabel: any = watch('showLabel');
 
 
     const getValue = (value: string): string | number => (isNaN(+value) ? value : +value);
 
+    // use centralized getFieldType from utils
+    const selectedFieldType = React.useMemo(() => {
+        const fieldName = typeof field === 'string' ? field : field?.value;
+        if (!fieldName) {
+            return '';
+        }
+        const tf = tableFields.find((f: any) => f.Field === fieldName);
+        return getFieldType(tf?.Type);
+    }, [field, tableFields]);
+
+    const isNumberField = selectedFieldType === 'NUMBER';
+    const isBooleanField = selectedFieldType === 'BOOLEAN';
+    const isTimeField = selectedFieldType === 'DATE';
+
+    // Normalize OPERATORS to the form {label, value} and filter out inapplicable operators based on field type.
+    const operatorOptions = React.useMemo(() => {
+        const normalized = ((OPERATORS || []) as any[]).map(op => ({ label: (op && op.label) || op, value: (op && op.value) || op }));
+        // text matching ops to remove for numeric fields
+        const textMatchOps = ['like', 'not like', 'match_all', 'match_any', 'match_phrase', 'match_phrase_prefix'];
+
+        if (isBooleanField) {
+            // BOOLEAN should only allow equality and null checks
+            const allowed = new Set(['=', '!=', 'is null', 'is not null']);
+            return normalized.filter(opItem => allowed.has(String(opItem.value)));
+        }
+
+        const isNumberOrTime = isNumberField || isTimeField;
+        if (isNumberOrTime) {
+            // remove text match ops for number or time fields
+            return normalized.filter(opItem => {
+                const v = String(opItem.value).toLowerCase();
+                return !textMatchOps.includes(v);
+            });
+        }
+
+        // non-number, non-boolean, non-time fields: keep full list
+        return normalized;
+     }, [isNumberField, isBooleanField, isTimeField]);
+
+    // Convert an input value according to current field type.
+    // Preserve explicit empty string ('') so users can set an empty-string value.
+    const convertValue = (v: any): any => {
+        // Preserve explicit empty string so the user can set ''
+        if (v === '')  {
+            return '';
+        }
+        if (v === undefined || v === null) {
+            return v;
+        }
+
+        // If array, convert each element
+        if (Array.isArray(v)) {
+            return v.map(convertValue);
+        }
+
+        // Handle booleans
+        if (v === true || v === 'true') {
+            return true;
+        }
+        if (v === false || v === 'false') {
+            return false;
+        }
+
+        // Prefer field-type-based conversion when possible
+        if (isNumberField) {
+            return getValue(String(v));
+        }
+
+        // Fallback: if the value looks like a number, convert it (this handles cases when field type detection isn't set)
+        const asStr = String(v);
+        if (asStr.trim() !== '' && !Number.isNaN(Number(asStr))) {
+            return Number(asStr);
+        }
+
+        return v;
+    };
+
     const onSubmit = (formValues: any) => {
-        const { field, operator, value, minValue, maxValue, label } = formValues;
+        const { field, operator: opField, value, minValue, maxValue, label } = formValues;
         const current = surroundingDataFilter.find(f => f.id === dataFilterValue?.id);
         const id = dataFilterValue?.id || nanoid();
 
+        // The compatible operator could be string or {label, value}.
+        const opValue = typeof opField === 'string' ? opField : opField?.value;
+
         let newValue: any[] = [];
 
-        if (operator.value === 'between' || operator.value === 'not between') {
-            if (minValue && maxValue) {
-                newValue = [getValue(minValue), getValue(maxValue)];
+        if (opValue === 'between' || opValue === 'not between') {
+            // Use convertValue so numbers/booleans are properly typed; preserve empty strings if provided
+            if ((minValue !== undefined && minValue !== '') && (maxValue !== undefined && maxValue !== '')) {
+                newValue = [convertValue(minValue), convertValue(maxValue)];
             }
-        } else if (value || typeof value === 'number') {
-            newValue = [value];
+        } else if (value !== undefined) {
+            // accept empty string, 0 and other falsy numeric values.
+            if (Array.isArray(value)) {
+                newValue = value.map(v => convertValue(v));
+            } else {
+                newValue = [convertValue(value)];
+            }
         }
 
         const newItem = {
             id,
             fieldName: field.value,
-            operator: operator.value,
+            operator: opValue,
             label,
             value: newValue,
         };
@@ -111,7 +200,8 @@ export function FilterContent(props: FilterContentProps) {
             return (
                 <>
                     <Field label="Value" invalid={!!errors.value} error={(errors.value as any)?.message}>
-                        <Input {...register('value', { required: 'Enter the value' })} list="field-value-list" />
+                        {/* Allow empty string as a valid value: treat undefined as missing but accept '' */}
+                        <Input {...register('value', { validate: (v: any) => v !== undefined || 'Enter the value' })} list="field-value-list" />
                     </Field>
                     <datalist id="field-value-list">
                         {tableFieldValue.map((item, idx) => (
@@ -183,10 +273,7 @@ export function FilterContent(props: FilterContentProps) {
                             render={({ field }) => (
                                 <Select
                                     {...field}
-                                    options={OPERATORS.map(op => ({
-                                        label: op,
-                                        value: op,
-                                    }))}
+                                    options={operatorOptions}
                                 />
                             )}
                         />
@@ -203,7 +290,7 @@ export function FilterContent(props: FilterContentProps) {
             </InlineFieldRow>
 
             {showLabel && (
-                <Field label="Label" invalid={!!errors.label} error={errors.label?.message}>
+                <Field invalid={!!errors.label} error={errors.label?.message}>
                     <Input {...register('label', { required: 'Please enter label' })} />
                 </Field>
             )}
