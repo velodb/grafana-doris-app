@@ -82,6 +82,44 @@ export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void;
 
     const getValue = (value: string): string | number => (isNaN(+value) ? value : +value);
 
+    // Convert an input value according to current field type.
+    // Preserve explicit empty string ('') so users can set an empty-string value.
+    const convertValue = (v: any): any => {
+        // Preserve explicit empty string so the user can set ''
+        if (v === '')  {
+            return '';
+        }
+        if (v === undefined || v === null) {
+            return v;
+        }
+
+        // If array, convert each element
+        if (Array.isArray(v)) {
+            return v.map(convertValue);
+        }
+
+        // Handle booleans
+        if (v === true || v === 'true') {
+            return true;
+        }
+        if (v === false || v === 'false') {
+            return false;
+        }
+
+        // Prefer field-type-based conversion when possible
+        if (isNumberField) {
+            return getValue(String(v));
+        }
+
+        // Fallback: if the value looks like a number, convert it (this handles cases when field type detection isn't set)
+        const asStr = String(v);
+        if (asStr.trim() !== '' && !Number.isNaN(Number(asStr))) {
+            return Number(asStr);
+        }
+
+        return v;
+    };
+
     const onSubmit = (formValues: any) => {
         const { field, operator: opField, value, minValue, maxValue, label } = formValues;
         const current = dataFilter.find(f => f.id === dataFilterValue?.id);
@@ -93,12 +131,17 @@ export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void;
         let newValue: any[] = [];
 
         if (opValue === 'between' || opValue === 'not between') {
-            if (minValue && maxValue) {
-                newValue = [getValue(minValue), getValue(maxValue)];
+            // Use convertValue so numbers/booleans are properly typed; preserve empty strings if provided
+            if ((minValue !== undefined && minValue !== '') && (maxValue !== undefined && maxValue !== '')) {
+                newValue = [convertValue(minValue), convertValue(maxValue)];
             }
-        } else if (value !== undefined && value !== '') {
-            // accept 0 and other falsy numeric values
-            newValue = [value];
+        } else if (value !== undefined) {
+            // accept empty string, 0 and other falsy numeric values.
+            if (Array.isArray(value)) {
+                newValue = value.map(v => convertValue(v));
+            } else {
+                newValue = [convertValue(value)];
+            }
         }
 
         const newItem = {
@@ -154,7 +197,8 @@ export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void;
             return (
                 <>
                     <Field label="Value" invalid={!!errors.value} error={(errors.value as any)?.message}>
-                        <Input {...register('value', { required: 'Enter the value' })} list="field-value-list" />
+                        {/* Allow empty string as a valid value: treat undefined as missing but accept '' */}
+                        <Input {...register('value', { validate: (v: any) => v !== undefined || 'Enter the value' })} list="field-value-list" />
                     </Field>
                     <datalist id="field-value-list">
                         {tableFieldValue.map((item, idx) => (
