@@ -59,7 +59,7 @@ export default function TraceDetail(props: { onClose?: () => void; open: boolean
         if (traceData) {
             return (
                 <PanelRenderer
-                    title="test"
+                    title="trace panel"
                     width={200}
                     height={300}
                     pluginId="traces"

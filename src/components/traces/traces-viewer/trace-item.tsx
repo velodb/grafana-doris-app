@@ -38,6 +38,11 @@ export const TraceItem: React.FC<TraceItemProps> = ({ trace, onClick }) => {
                 position: relative;
                 overflow: hidden;
                 box-shadow: ${theme.shadows.z1};
+
+                &:hover {
+                    background-color: rgb(34, 37, 43);
+                    cursor: pointer;
+                }
             `}
         >
             {/* Progress bar background */}

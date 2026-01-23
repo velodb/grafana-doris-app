@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 import { HelpCircle } from 'lucide-react';
 import { Button, Field, Input, Select } from '@grafana/ui';
 import { useAtom, useAtomValue } from 'jotai';
+import { Tooltip } from 'antd';
 import { currentOperationAtom, currentServiceAtom, maxDurationAtom, minDurationAtom, tagsAtom, traceOperationsAtom, tracesServicesAtom } from 'store/traces';
 import { css } from '@emotion/css';
 import { currentTimeFieldAtom } from 'store/discover';
@@ -72,15 +73,28 @@ export function SearchSidebar(props: {
                                 className={css`
                                     display: flex;
                                     align-items: center;
-                                    justify-content: space-between;
                                 `}
                             >
                                 Tags
-                                <HelpCircle
-                                    className={css`
+                                <Tooltip title={<div>
+                                    Filter traces using <a className={css`font-weight:500px;color:#3D71D9;`} href='https://brandur.org/logfmt' target='_blank'>logfmt</a> syntax:
+                                    <br />
+                                    <ul className={css`list-style-type: disc;list-style-position: inside;`}>
+                                        <li>Equality: http.status_code=200</li>
+                                        <li>Inequality: error!=true</li>
+                                        <li>Contains: message~="timeout"</li>
+                                        <li>Multiple (AND): method=POST duration&gt;1000</li>
+                                        <li>OR conditions: error=true OR status&gt;=500</li>
+                                    </ul>
+                                </div>}>
+                                    <HelpCircle
+                                        size={16}
+                                        className={css`
                                         margin-left: 4px;
                                     `}
-                                />
+                                    />
+                                </Tooltip>
+
                             </span>
                         }
                         style={{ marginLeft: 8 }}
