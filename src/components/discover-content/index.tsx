@@ -28,7 +28,7 @@ import { ContentTableActions } from './content-table-actions';
 import { ContentItem } from './content-item';
 import SurroundingLogs from 'components/surrounding-logs';
 import TraceDetail from 'components/trace-detail';
-import { QUERY_TRACE_FIELDS } from 'utils/data';
+import { QUERY_TRACE_FIELDS, formatTimestampToDateTime, isValidTimeFieldType  } from 'utils/data';
 
 export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetchNextPage: (page: number) => void; getTraceData: (traceId: string, table?: string,callback?: Function) => any }) {
     const theme = useTheme2();
@@ -356,38 +356,57 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                 },
             },
             {
-                header: 'Time',
+                header: () => currentTimeField || 'Time',
                 accessorKey: 'time',
                 cell: ({ row, getValue }) => {
                     const fieldValue = getValue<string>();
                     const fieldName = currentTimeField;
-                    const fieldType = 'DATE';
-                    const timeField = fieldValue;
-                    return (
-                        <div
-                            className={`${css`
-                                width: 240px;
-                            `} ${HoverStyle}`}
-                        >
-                            <div
-                                className={css`
-                                    display: flex;
-                                    align-items: center;
-                                `}
-                            >
-                                {timeField}
-                                <div
-                                    className={`filter-content ${css`
-                                        visibility: hidden;
-                                    `}`}
-                                >
-                                    <ContentItem fieldName={fieldName} fieldValue={fieldValue} fieldType={fieldType} />
-                                </div>
-                            </div>
-                        </div>
-                    );
-                },
-            },
+                    // try to find field type from tableFields
+                    const fieldInfo = tableFields.find((f: any) => f.value === currentTimeField);
+                    const fieldType = fieldInfo?.Type || '';
+                    let timeField: any = fieldValue;
+
+                    // If this field is a valid time field type, try to format it
+                    try {
+                        if (fieldInfo && isValidTimeFieldType(String(fieldInfo.Type).toUpperCase())) {
+                            // if numeric timestamp, convert
+                            const num = Number(fieldValue);
+                            if (!Number.isNaN(num)) {
+                                timeField = formatTimestampToDateTime(num);
+                            } else {
+                                // otherwise keep raw string (or attempt Date parse)
+                                timeField = String(fieldValue || '');
+                            }
+                        }
+                    } catch (e) {
+                        // fallback to raw
+                        timeField = fieldValue;
+                    }
+                     return (
+                         <div
+                             className={`${css`
+                                 width: 240px;
+                             `} ${HoverStyle}`}
+                         >
+                             <div
+                                 className={css`
+                                     display: flex;
+                                     align-items: center;
+                                 `}
+                             >
+                                 {timeField}
+                                 <div
+                                     className={`filter-content ${css`
+                                         visibility: hidden;
+                                     `}`}
+                                 >
+                                     <ContentItem fieldName={fieldName} fieldValue={fieldValue} fieldType={fieldType} />
+                                 </div>
+                             </div>
+                         </div>
+                     );
+                 },
+             },
         ];
         if (!hasSelectedFields) {
             dynamicColumns.push({
