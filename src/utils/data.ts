@@ -725,6 +725,11 @@ export function generateHighlightedResults(data: { search_value: string; indexes
     const keyword: string = data.search_value || '';
     const searchTableData = getSearchTableData(data.indexes, result);
 
+    // Detect simple Lucene "field:value" pattern so we can highlight the specified field
+    // even when `indexes` (tokenizeFields) is empty. Example: "service_name:frontend"
+    const luceneFieldMatch = keyword && keyword.match(/^\s*([^\s:]+)\s*:/);
+    const luceneField = luceneFieldMatch ? luceneFieldMatch[1].replace(/['"]+/g, '') : null;
+
     const keywordsTokens: string[] = flatten(
         Array.from(jsTokens(keyword))
             .filter(item => item.type !== 'Punctuator')
@@ -746,7 +751,7 @@ export function generateHighlightedResults(data: { search_value: string; indexes
                 itemValue = JSON.stringify(itemValue);
             }
 
-            if (keyword && searchField(searchTableData, key)) {
+            if (keyword && (searchField(searchTableData, key) || (luceneField && key === luceneField))) {
                 const strValue = typeof itemValue === 'string' ? itemValue : itemValue + '';
 
                 if (isWrappedInQuotes(keyword)) {
@@ -814,3 +819,4 @@ export function generateHighlightedResults(data: { search_value: string; indexes
 }
 
 export const QUERY_TRACE_FIELDS = ['trace_id','span_id','parent_span_id','span_name','service_name']
+
