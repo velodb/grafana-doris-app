@@ -13,7 +13,9 @@ export const discoverCurrentAtom = atom<DiscoverCurrent>(DISCOVER_DEFAULT_STATUS
 
 // databases
 export const databasesAtom = atom<any>([]);
+export const settingDatabasesAtom = atom<any>([]);
 export const tablesAtom = atom<any>([]);
+export const settingTablesAtom = atom<any>([]);
 
 export const currentCatalogAtom = atom('internal');
 export const searchTypeAtom = atom<'SQL' | 'Search' | 'Lucene'>('Lucene');

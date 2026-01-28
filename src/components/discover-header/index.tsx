@@ -141,8 +141,11 @@ export default function DiscoverHeader(
                                     value: item,
                                 };
                             });
+                            console.log('bbb,',discoverCurrent);
+                            
                         setDiscoverCurrent({
                             ...discoverCurrent,
+                            table: selectedTable.value,
                             timeField: options[0]?.value || '',
                         });
                         setTimeFields(options);
@@ -260,6 +263,8 @@ export default function DiscoverHeader(
                         width={15}
                         value={currentTable}
                         onChange={(selectedTable: any) => {
+                            console.log('selectedTable.value',selectedTable.value);
+                            
                             setDiscoverCurrent({
                                 ...discoverCurrent,
                                 table: selectedTable.value,

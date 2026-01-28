@@ -153,6 +153,8 @@ export function DiscoverHistogram() {
                 const [startIndex, endIndex] = (areas[0] as any).coordRange as [startIndex: number, endIndex: number];
                 const timeInterval = interval === IntervalEnum.Auto ? getAutoInterval(currentDate as any).interval_unit : interval;
                 const chartsEndDate = dayjs(new Date(tableDataCharts[endIndex]['TT'])).add(interval_value, timeInterval);
+                console.log('aaa',discoverCurrent);
+                
                 setDiscoverCurrent({
                     ...discoverCurrent,
                     date: [dayjs(tableDataCharts[startIndex]['TT']), chartsEndDate],
