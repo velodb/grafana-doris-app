@@ -221,7 +221,8 @@ export function isIgnorableHighlightToken(token: string): boolean {
     return false;
 }
 
-export function trimSpacesAroundEquals(str:string) {
+export function trimSpacesAroundEquals(str: string) {
   // 去掉等于号两边所有空格
   return str.replace(/\s*=\s*/g, '=');
 }
+
