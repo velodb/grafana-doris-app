@@ -439,7 +439,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                                     & .trace-link {
                                         cursor: pointer;
                                         text-decoration: underline;
-                                        color: blue;
+                                        color: #3D71D9;
                                     }
                                 `}
                             >
