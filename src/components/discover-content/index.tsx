@@ -53,6 +53,12 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [surroundingLogsOpen, setSurroundingLogsOpen] = useState(false);
     const [_fieldKeyBg, setFieldKeyBg] = useState<string>('#3f3f4f');
+    // local input state for page-jump control
+    const [jumpPage, setJumpPage] = useState<string>(String(page));
+
+    useEffect(() => {
+        setJumpPage(String(page));
+    }, [page]);
 
     const IS_TRACE_TABLE = QUERY_TRACE_FIELDS.every((field) => !!tableFields.find((item) => item.value === field))
 
@@ -595,14 +601,81 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                 `}
             >
                 <div>Total {tableTotalCount} rows</div>
-                <Pagination
-                    currentPage={page}
-                    numberOfPages={Math.ceil(tableTotalCount / pageSize) || 1}
-                    onNavigate={toPage => {
-                        setPage(toPage);
-                    }}
-                />
-            </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Pagination
+                        currentPage={page}
+                        numberOfPages={Math.ceil(tableTotalCount / pageSize) || 1}
+                        onNavigate={toPage => {
+                            setPage(toPage);
+                        }}
+                    />
+                    {/* Page jump input */}
+                    <div
+                        className={css`
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                        `}
+                    >
+                        {/* local controlled input for typing page number */}
+                        <input
+                            type="number"
+                            min={1}
+                            step={1}
+                            value={jumpPage}
+                            onChange={e => {
+                                setJumpPage(e.target.value);
+                            }}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                    const num = Number(jumpPage);
+                                    const total = Math.max(Math.ceil(tableTotalCount / pageSize) || 1, 1);
+                                    if (!Number.isNaN(num)) {
+                                        const target = Math.min(Math.max(1, Math.floor(num)), total);
+                                        setPage(target);
+                                        try {
+                                            fetchNextPage && fetchNextPage(target);
+                                        } catch {}
+                                        setJumpPage(String(target));
+                                    } else {
+                                        // reset to current page if invalid
+                                        setJumpPage(String(page));
+                                    }
+                                }
+                            }}
+                            className={css`
+                                width: 72px;
+                                padding: 6px 8px;
+                                border-radius: 4px;
+                                border: 1px solid rgba(0,0,0,0.15);
+                            `}
+                        />
+                        <button
+                            onClick={() => {
+                                const num = Number(jumpPage);
+                                const total = Math.max(Math.ceil(tableTotalCount / pageSize) || 1, 1);
+                                if (!Number.isNaN(num)) {
+                                    const target = Math.min(Math.max(1, Math.floor(num)), total);
+                                    setPage(target);
+                                    try {
+                                        fetchNextPage && fetchNextPage(target);
+                                    } catch {}
+                                    setJumpPage(String(target));
+                                } else {
+                                    setJumpPage(String(page));
+                                }
+                            }}
+                            className={css`
+                                padding: 6px 10px;
+                                border-radius: 4px;
+                                border: 1px solid rgba(0,0,0,0.15);
+                                background: transparent;
+                                cursor: pointer;
+                            `}
+                        >Go</button>
+                     </div>
+                 </div>
+              </div>
             <TraceDetail onClose={() => setDrawerOpen(false)} open={drawerOpen} traceId={selectedRow?.trace_id} traceTable="otel_traces" />
 
             {surroundingLogsOpen && (
