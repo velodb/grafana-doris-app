@@ -1,10 +1,8 @@
 'use client';
 
 import { Row, ColumnDef } from '@tanstack/react-table';
-import JsonView from '@uiw/react-json-view';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ColumnStyleWrapper, HoverStyle } from '../discover-content/discover-content.style';
-import { SELECTDB_THEME, SELECTDB_THEME_LIGHT } from '../discover-content/json-viewer.theme';
 import { useAtom, useAtomValue } from 'jotai';
 import { useRequest } from 'ahooks';
 import { css } from '@emotion/css';
@@ -214,7 +212,7 @@ export default function SurroundingLogs() {
                     const result2 = getAfterResultWrap(generateSurroundingResult(rowsData2, currentTimeField));
                     const selectedResult = generateSurroundingResult([selectedRow._original], currentTimeField);
                     const data = [...result1, ...selectedResult, ...result2];
-                    const rowsDataWithUid = await generateTableDataUID(data);
+                    const rowsDataWithUID = await generateTableDataUID(data);
 
                     if (result1.length > 0) {
                         setBeforeCount(result1.length);
@@ -228,7 +226,7 @@ export default function SurroundingLogs() {
                     } else {
                         setAfterTime(selectedRow.time);
                     }
-                    setSurroundingTableData(rowsDataWithUid);
+                    setSurroundingTableData(rowsDataWithUID);
                     setTimeout(() => {
                         scrollToSelectedRow();
                     }, 50);
@@ -292,19 +290,93 @@ export default function SurroundingLogs() {
     };
 
     const renderSubComponent = ({ row }: { row: Row<any> }) => {
-        const subTableData = Object.keys(row.original._original).map(key => {
+        // processObject copied/adapted from discover-content to normalize stringified JSON inside fields
+        const processObject = (obj: any): any => {
+            if (typeof obj !== 'object' || obj === null) {
+                return obj;
+            }
+
+            const result: any = {};
+            for (const key in obj) {
+                if (obj.hasOwnProperty(key)) {
+                    let value = obj[key];
+
+                    if (typeof value === 'string') {
+                        let cleanValue = value.trim();
+
+                        // check for escaped double quotes
+                        if (cleanValue.includes('\\"')) {
+                            try {
+                                cleanValue = JSON.parse(`"${cleanValue}"`);
+                            } catch (e) {
+                                // if parsing fails, keep the original value
+                            }
+                        }
+
+                        // check for JSON
+                        if ((cleanValue.startsWith('{') && cleanValue.endsWith('}')) || (cleanValue.startsWith('[') && cleanValue.endsWith(']'))) {
+                            try {
+                                const parsed = JSON.parse(cleanValue);
+                                value = processObject(parsed);
+                            } catch (e) {
+                                value = obj[key];
+                            }
+                        } else {
+                            value = obj[key];
+                        }
+                    } else if (Array.isArray(value)) {
+                        value = value.map(item => {
+                            if (typeof item === 'string') {
+                                let cleanItem = item.trim();
+
+                                if (cleanItem.includes('\\"')) {
+                                    try {
+                                        cleanItem = JSON.parse(`"${cleanItem}"`);
+                                    } catch (e) { }
+                                }
+
+                                if ((cleanItem.startsWith('{') && cleanItem.endsWith('}')) || (cleanItem.startsWith('[') && cleanItem.endsWith(']'))) {
+                                    try {
+                                        const parsed = JSON.parse(cleanItem);
+                                        return processObject(parsed);
+                                    } catch {
+                                        return item;
+                                    }
+                                }
+                                return item;
+                            }
+                            return typeof item === 'object' && item !== null ? processObject(item) : item;
+                        });
+                    } else if (typeof value === 'object' && value !== null) {
+                        value = processObject(value);
+                    }
+
+                    result[key] = value;
+                }
+            }
+            return result;
+        };
+
+        const processedData = processObject(row.original._original);
+
+        const subTableData = Object.keys(processedData).map(key => {
             return {
                 field: key,
                 value: row.original._original[key],
             };
         });
+
         return (
             <div
                 className={css`
                     position: relative;
                 `}
             >
-                <TabsBar>
+                <TabsBar
+                    className={css`
+                        ${theme.isDark ? 'background-color: hsl(var(--n9) / 0.4);' : 'background-color: hsl(var(--b1) / 0.6);'}
+                    `}
+                >
                     {state.map((tab, index) => {
                         return (
                             <Tab
@@ -369,27 +441,33 @@ export default function SurroundingLogs() {
                     )}
                     {state[1].active && (
                         <div>
-                            <JsonView
-                                value={row.original._original}
-                                className={`-mt-2 pl-11 !leading-6 ${css`
-                                    .w-rjv-wrap {
-                                        border-left: none !important;
-                                    }
-                                `}`}
-                                shortenTextAfterLength={0}
-                                indentWidth={36}
-                                displayDataTypes={false}
-                                enableClipboard={false}
-                                style={theme.isDark ? SELECTDB_THEME : SELECTDB_THEME_LIGHT}
-                            />
+                            <pre
+                                className={css`
+                                    padding: 16px;
+                                    margin: 0;
+                                    overflow-x: auto;
+                                    white-space: pre-wrap;
+                                    word-break: break-all;
+                                    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+                                    font-size: 12px;
+                                    line-height: 1.5;
+                                    ${theme.isDark ? 'background-color: #1e1e1e; color: #d4d4d4;' : 'background-color: #f5f5f5; color: #333;'}
+                                    border-radius: 4px;
+                                    max-height: 400px;
+                                    overflow-y: auto;
+                                `}
+                            >
+                                {JSON.stringify(processedData, null, 2)}
+                            </pre>
                         </div>
                     )}
                 </TabContent>
-            </div>
-        );
-    };
+                {/* Surrounding Logs link is handled by parent (DiscoverContent). No action here. */}
+             </div>
+         );
+     };
 
-    function generateSurroundingResult(result: any, timeField: string) {
+     function generateSurroundingResult(result: any, timeField: string) {
         const sortedResult = sortBy(result, timeField);
         const _sourceResult = sortedResult.map((item: any) => {
             let itemSource = '';
