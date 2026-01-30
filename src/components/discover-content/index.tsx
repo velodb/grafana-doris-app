@@ -320,7 +320,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                         cursor: pointer;
                         padding-top: 0.5rem;
                         &:hover {
-                            color: rgb(43, 102, 253);
+                            color: #3D71D9;
                         }
                     `}
                 >
@@ -706,7 +706,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                         setSurroundingDataFilter([]);
                         setBeforeCount(0);
                         setAfterCount(0);
-                        setSelectedSurroundingFields([]);
+                        // setSelectedSurroundingFields([]);
                         setSurroundingLogsOpen(false);
                     }}
                 >

@@ -2,13 +2,14 @@ import { useAtom, useAtomValue } from 'jotai';
 import React, { useState } from 'react';
 import FieldItem from './field-item/field-item';
 import { FilterContent } from './filter-content/filter-content';
-import { selectedFieldsAtom, tableFieldsAtom, searchableAtom, aggregatableAtom, fieldTypeAtom, indexesAtom } from 'store/discover';
+import { selectedFieldsAtom, tableFieldsAtom, searchableAtom, aggregatableAtom, fieldTypeAtom, indexesAtom, surroundingSelectedFieldsAtom } from 'store/discover';
 import { AggregatableEnum, getFieldType, SearchableEnum, FieldTypeEnum } from 'utils/data';
 import { Button, CollapsableSection, Icon, Input, useTheme2, Toggletip } from '@grafana/ui';
 import { css } from '@emotion/css';
 
 export default function DiscoverSidebar() {
     const [selectedFields, setSelectedFields] = useAtom(selectedFieldsAtom);
+    const [selectedSurroundingFields, setSelectedSurroundingFields] = useAtom(surroundingSelectedFieldsAtom);
     const tableFields = useAtomValue(tableFieldsAtom);
     const [searchable, _setSearchable] = useAtom(searchableAtom);
     const [aggregatable, _setAggregatable] = useAtom(aggregatableAtom);
@@ -57,12 +58,17 @@ export default function DiscoverSidebar() {
 
     function handleAdd(field: any) {
         setSelectedFields([...selectedFields, field] as any);
+        setSelectedSurroundingFields([...selectedSurroundingFields, field] as any)
     }
 
     function handleRemove(field: any) {
         const index = selectedFields.findIndex((item: any) => item.Field === field.Field);
         selectedFields.splice(index, 1);
+
+        const surIndex = selectedSurroundingFields.findIndex((item: any) => item.Field === field.Field);
+        selectedSurroundingFields.splice(surIndex, 1);
         setSelectedFields([...selectedFields]);
+        setSelectedSurroundingFields([...selectedSurroundingFields]);
     }
 
     return (

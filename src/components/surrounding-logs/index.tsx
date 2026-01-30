@@ -629,16 +629,19 @@ export default function SurroundingLogs() {
                                 >
                                     <div className={`max-h-48 overflow-auto`}>
                                         <div className="flex items-center break-all py-4">
-                                            {field.value === 'trace_id' ? <Button>{fieldValue}</Button> : <span className="text-xs">{fieldValue}</span>}
+                                            {field.value === 'trace_id' && fieldValue ? <Button>{fieldValue}</Button> : <span className="text-xs">{fieldValue}</span>}
                                         </div>
                                     </div>
-                                    <div
-                                        className={`filter-content ${css`
+                                    {
+                                        fieldValue ? <div
+                                            className={`filter-content ${css`
                                             visibility: hidden;
                                         `}`}
-                                    >
-                                        <SurroundingContentItem fieldName={fieldName} fieldValue={fieldValue} fieldType={fieldType} />
-                                    </div>
+                                        >
+                                            <SurroundingContentItem fieldName={fieldName} fieldValue={fieldValue} fieldType={fieldType} />
+                                        </div> : null
+                                    }
+
                                 </div>
                             );
                         },
