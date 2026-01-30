@@ -14,10 +14,10 @@ import {
     afterCountAtom,
     beforeCountAtom,
     surroundingDataFilterAtom,
-    surroundingSelectedFieldsAtom,
     currentTimeFieldAtom,
     discoverCurrentAtom,
     selectedDatasourceAtom,
+    tableFieldsAtom
 } from 'store/discover';
 import { get } from 'lodash-es';
 import { Button as AntButton } from 'antd';
@@ -30,7 +30,7 @@ import SurroundingLogs from 'components/surrounding-logs';
 import TraceDetail from 'components/trace-detail';
 import { usePluginContext } from '@grafana/data';
 import type { AppPluginSettings } from 'components/AppConfig/AppConfig';
-import { QUERY_TRACE_FIELDS, formatTimestampToDateTime, isValidTimeFieldType  } from 'utils/data';
+import { formatTimestampToDateTime, isValidTimeFieldType  } from 'utils/data';
 
 
 export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetchNextPage: (page: number) => void; getTraceData: (traceId: string, table?: string, callback?: Function) => any }) {
@@ -45,7 +45,6 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
     const [selectedRow, setSelectedRow] = useAtom(selectedRowAtom);
     const setSurroundingTableData = useSetAtom(surroundingTableDataAtom);
     const setSurroundingDataFilter = useSetAtom(surroundingDataFilterAtom);
-    const setSelectedSurroundingFields = useSetAtom(surroundingSelectedFieldsAtom);
     const setBeforeCount = useSetAtom(beforeCountAtom);
     const setAfterCount = useSetAtom(afterCountAtom);
     const [pageSize, _setPageSize] = useAtom(pageSizeAtom);
@@ -55,9 +54,12 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
     const [_fieldKeyBg, setFieldKeyBg] = useState<string>('#3f3f4f');
     const discoverCurrent = useAtomValue(discoverCurrentAtom);
     const currentDatasource = useAtomValue(selectedDatasourceAtom);
+    const tableFields = useAtomValue(tableFieldsAtom);
     const context = usePluginContext();
     // user settings
-    const jsonData = context.meta.jsonData;
+    const jsonData = context.meta.jsonData || {};
+    console.log('jsonData',jsonData);
+    
     const { logsConfig = {} } = jsonData as AppPluginSettings;
     const { database = "", datasource = {}, logsTable = "", targetTraceTable = "" } = logsConfig;
     // local input state for page-jump control

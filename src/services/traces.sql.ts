@@ -180,7 +180,7 @@ WITH
       span_name AS operation,
       service_name AS root_service
     FROM ${params.table}
-    WHERE (parent_span_id IS NULL OR parent_span_id = '') AND ${rootSpansFilter}
+    WHERE (parent_span_id IS NULL OR parent_span_id = '') AND ${rootSpansFilter} AND ${timeFilter}
   ),
   aggregated AS (
     SELECT
