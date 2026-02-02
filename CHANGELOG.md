@@ -1,5 +1,7 @@
 # Changelog
 
+## [1.0.1-alpha.1](https://github.com/jeffreys-cat/grafana-doris-app/compare/v1.0.0-alpha.1...v1.0.1-alpha.1) (2026-02-02)
+
 ## 1.0.0-alpha.1 (2026-02-02)
 
 ### ✨ Features
