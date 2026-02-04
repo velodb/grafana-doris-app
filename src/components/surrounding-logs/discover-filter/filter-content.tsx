@@ -2,7 +2,7 @@ import { useAtom, useAtomValue } from 'jotai';
 import React from 'react';
 import { nanoid } from 'nanoid';
 import { Select, InlineField, InlineFieldRow, InlineSwitch, Button, Input, Field } from '@grafana/ui';
-import { tableFieldsAtom, tableFieldValuesAtom, surroundingDataFilterAtom, tableDataAtom } from 'store/discover';
+import { tableFieldsAtom, tableFieldValuesAtom, surroundingDataFilterAtom, tableDataAtom, indexesAtom } from 'store/discover';
 import { Operator } from 'types/type';
 import { OPERATORS, getFieldType } from 'utils/data';
 import { Controller, useForm } from 'react-hook-form';
@@ -14,6 +14,7 @@ export function FilterContent(props: FilterContentProps) {
     const { onHide, dataFilterValue } = props;
     const [surroundingDataFilter, setSurroundingDataFilter] = useAtom(surroundingDataFilterAtom);
     const tableFields = useAtomValue(tableFieldsAtom);
+    const indexes = useAtomValue(indexesAtom);
     if (process.env.NODE_ENV !== 'production') {
         // add a debug label for dev to help with jotai debugging
         // @ts-ignore
@@ -70,8 +71,8 @@ export function FilterContent(props: FilterContentProps) {
     // Normalize OPERATORS to the form {label, value} and filter out inapplicable operators based on field type.
     const operatorOptions = React.useMemo(() => {
         const normalized = ((OPERATORS || []) as any[]).map(op => ({ label: (op && op.label) || op, value: (op && op.value) || op }));
-        // text matching ops to remove for numeric fields
-        const textMatchOps = ['like', 'not like', 'match_all', 'match_any', 'match_phrase', 'match_phrase_prefix'];
+        // match_* operators require doris inverted index. Keep LIKE/NOT LIKE available for string-like fields
+        const matchOnlyOps = ['match_all', 'match_any', 'match_phrase', 'match_phrase_prefix'];
 
         if (isBooleanField) {
             // BOOLEAN should only allow equality and null checks
@@ -81,16 +82,42 @@ export function FilterContent(props: FilterContentProps) {
 
         const isNumberOrTime = isNumberField || isTimeField;
         if (isNumberOrTime) {
-            // remove text match ops for number or time fields
+            // remove text match ops (including LIKE/NOT LIKE and match_*) for number or time fields
             return normalized.filter(opItem => {
                 const v = String(opItem.value).toLowerCase();
-                return !textMatchOps.includes(v);
+                return !(v === 'like' || v === 'not like' || matchOnlyOps.includes(v));
             });
         }
 
-        // non-number, non-boolean, non-time fields: keep full list
+        // non-number, non-boolean, non-time fields: keep full list but gate match_* on inverted index
+        try {
+            const fieldName = typeof field === 'string' ? field : field?.value;
+            if (!fieldName) {
+                return normalized;
+            }
+            if (!isNumberField && !isBooleanField && !isTimeField) {
+                const hasInverted = Array.isArray(indexes) && indexes.some((idx: any) => {
+                    if (!idx || !idx.columnName) {
+                        return false;
+                    }
+                    const t = idx.type || '';
+                    return String(idx.columnName) === String(fieldName) && t.toUpperCase().includes('INVERT');
+                });
+
+                if (!hasInverted) {
+                    // remove only the match_* operators; allow LIKE/NOT LIKE to remain
+                    return normalized.filter(opItem => {
+                        const v = String(opItem.value).toLowerCase();
+                        return !matchOnlyOps.includes(v);
+                    });
+                }
+            }
+        } catch (e) {
+            // fallback to full list
+        }
+
         return normalized;
-     }, [isNumberField, isBooleanField, isTimeField]);
+     }, [isNumberField, isBooleanField, isTimeField, field, indexes]);
 
     // Convert an input value according to current field type.
     // Preserve explicit empty string ('') so users can set an empty-string value.

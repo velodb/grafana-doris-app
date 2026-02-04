@@ -2,7 +2,7 @@ import { useAtom, useAtomValue } from 'jotai';
 import React from 'react';
 import { nanoid } from 'nanoid';
 import { Select, InlineField, InlineFieldRow, InlineSwitch, Button, Input, Field } from '@grafana/ui';
-import { tableFieldsAtom, dataFilterAtom, tableFieldValuesAtom, tableDataAtom } from 'store/discover';
+import { tableFieldsAtom, dataFilterAtom, tableFieldValuesAtom, tableDataAtom, indexesAtom } from 'store/discover';
 import { DataFilterType, Operator } from 'types/type';
 import { OPERATORS, getFieldType } from 'utils/data';
 import { Controller, useForm } from 'react-hook-form';
@@ -14,6 +14,7 @@ export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void;
     const [dataFilter, setDataFilter] = useAtom(dataFilterAtom);
     const [tableFieldValue, setTableFieldValue] = useAtom(tableFieldValuesAtom);
     const tableData = useAtomValue(tableDataAtom);
+    const indexes = useAtomValue(indexesAtom);
 
     const {
         control,
@@ -88,8 +89,8 @@ export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void;
     // Normalize OPERATORS to the form {label, value} and filter out inapplicable operators based on field type.
     const operatorOptions = React.useMemo(() => {
         const normalized = ((OPERATORS || []) as any[]).map(op => ({ label: (op && op.label) || op, value: (op && op.value) || op }));
-        // text matching ops to remove for numeric fields
-        const textMatchOps = ['like', 'not like', 'match_all', 'match_any', 'match_phrase', 'match_phrase_prefix'];
+        // match_* operators require doris inverted index. Keep LIKE/NOT LIKE available for string-like fields
+        const matchOnlyOps = ['match_all', 'match_any', 'match_phrase', 'match_phrase_prefix'];
 
         if (isBooleanField) {
             // BOOLEAN should only allow equality and null checks
@@ -99,16 +100,45 @@ export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void;
 
         const isNumberOrTime = isNumberField || isTimeField;
         if (isNumberOrTime) {
-            // remove text match ops for number or time fields
+            // remove text match ops (including LIKE/NOT LIKE and match_*) for number or time fields
             return normalized.filter(opItem => {
                 const v = String(opItem.value).toLowerCase();
-                return !textMatchOps.includes(v);
+                return !(v === 'like' || v === 'not like' || matchOnlyOps.includes(v));
             });
         }
 
         // non-number, non-boolean, non-time fields: keep full list
-        return normalized;
-     }, [isNumberField, isBooleanField, isTimeField]);
+        // For string-like fields, only allow doris inverted-index text operators when the field has an inverted index
+        try {
+            const fieldName = typeof field === 'string' ? field : field?.value;
+            // If the user hasn't selected a field yet, show the full list (no gating)
+            if (!fieldName) {
+                return normalized;
+            }
+            // treat "string" here as any type except NUMBER, BOOLEAN, DATE
+            if (!isNumberField && !isBooleanField && !isTimeField) {
+                const hasInverted = Array.isArray(indexes) && indexes.some((idx: any) => {
+                    if (!idx || !idx.columnName) {
+                        return false;
+                    }
+                    const t = idx.type || '';
+                    return String(idx.columnName) === String(fieldName) && t.toUpperCase().includes('INVERT');
+                });
+
+                if (!hasInverted) {
+                    // remove only the match_* operators; allow LIKE/NOT LIKE to remain because they work without inverted index
+                    return normalized.filter(opItem => {
+                        const v = String(opItem.value).toLowerCase();
+                        return !matchOnlyOps.includes(v);
+                    });
+                }
+             }
+         } catch (e) {
+             // swallow any unexpected errors and fall back to returning full list
+         }
+
+         return normalized;
+      }, [isNumberField, isBooleanField, isTimeField, field, indexes]);
 
     const getValue = (value: string): string | number => (isNaN(+value) ? value : +value);
 
