@@ -199,8 +199,8 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
         </FieldSet>
       </form>
       <form className={s.marginTop} onSubmit={submitLogConfig}>
-        <FieldSet label="Logs">
-          <Field label="Datasource">
+        <FieldSet>
+          <Field label="Default Datasource">
             <DataSourcePicker
               width={20}
               type={'mysql'}
@@ -215,7 +215,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
               }}
             />
           </Field>
-          <Field label="Database">
+          <Field label="Default Database">
             <Select
               width={60}
               options={databases}
@@ -226,7 +226,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
               }}
             ></Select>
           </Field>
-          <Field label="Logs Table">
+          <Field label="Default Logs Table">
             <Select
               options={tables}
               width={60}
@@ -239,7 +239,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
               }}
             />
           </Field>
-          <Field label="Trace Table">
+          <Field label="Default Trace Table">
             <Select
               options={tables}
               width={60}
