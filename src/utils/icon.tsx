@@ -1,17 +1,16 @@
-import { Icon } from "@grafana/ui";
-import React from "react";
-
+import { Icon } from '@grafana/ui';
+import React from 'react';
 
 export const FIELD_TYPES = [
     {
         key: 'STRING',
         value: ['VARCHAR', 'STRING', 'CHAR', 'TEXT'],
-        icon: <Icon name="text-fields" />
+        icon: <Icon name="text-fields" />,
     },
     {
         key: 'NUMBER',
         value: ['INT', 'LARGEINT', 'SMALLINT', 'TINYINT', 'DECIMAL', 'BIGINT', 'FLOAT', 'DOUBLE'],
-        icon: <Icon name="percentage" />,
+        icon: <Icon name="list-ol" />,
     },
     {
         key: 'DATE',
@@ -33,7 +32,7 @@ export const FIELD_TYPES = [
     {
         key: 'BOOLEAN',
         value: ['BOOLEAN'],
-        icon: <Icon name="toggle-on" />
+        icon: <Icon name="toggle-on" />,
     },
     {
         key: 'BITMAP',
