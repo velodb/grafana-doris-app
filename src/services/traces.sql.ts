@@ -1,16 +1,16 @@
 import { QueryTracesParams, TracesOperationsParams, TracesServicesParams } from 'types/type';
 
 interface QueryTraceDetailParams {
-    database: string;
-    table: string;
-    trace_id: string;
+  database: string;
+  table: string;
+  trace_id: string;
 }
 
 // 查询某个Table的Trace详情
 export function getQueryTableTraceSQL(params: QueryTraceDetailParams): string {
-    const { table, trace_id, database } = params;
+  const { table, trace_id, database } = params;
 
-    const sql = `
+  const sql = `
       SELECT
         trace_id AS traceID,
         span_id AS spanID,
@@ -57,29 +57,29 @@ export function getQueryTableTraceSQL(params: QueryTraceDetailParams): string {
       WHERE trace_id = '${trace_id}';
     `;
 
-    return sql;
+  return sql;
 }
 
 function parseDuration(input?: string): number {
-    if (!input) {
-        return 0;
-    }
-
-    if (input.endsWith('ms')) {
-        return parseFloat(input.replace('ms', ''));
-    } else if (input.endsWith('us')) {
-        return parseFloat(input.replace('us', '')) / 1000;
-    } else if (input.endsWith('s')) {
-        return parseFloat(input.replace('s', '')) * 1000;
-    }
+  if (!input) {
     return 0;
+  }
+
+  if (input.endsWith('ms')) {
+    return parseFloat(input.replace('ms', ''));
+  } else if (input.endsWith('us')) {
+    return parseFloat(input.replace('us', '')) / 1000;
+  } else if (input.endsWith('s')) {
+    return parseFloat(input.replace('s', '')) * 1000;
+  }
+  return 0;
 }
 
 function tagsToDorisSQLConditions(tags?: string): string {
-    if (!tags) {
-        return '1=1';
-    }
-    const conditions: string[] = [];
+  if (!tags) {
+    return '1=1';
+  }
+  const conditions: string[] = [];
 
     const regex = /([\w.]+)=(?:"([^"]+)"|'([^']+)'|([^\s]+))/g;
     let match: RegExpExecArray | null;
@@ -89,63 +89,63 @@ function tagsToDorisSQLConditions(tags?: string): string {
         conditions.push(`span_attributes['${key}'] = '${val}'`);
     }
 
-    return conditions.length > 0 ? conditions.join(' AND ') : '1=1';
+  return conditions.length > 0 ? conditions.join(' AND ') : '1=1';
 }
 
 export function buildTraceAggSQLFromParams(params: QueryTracesParams): string {
-    const timeFilter = `${params.timeField} >= '${params.startDate}' AND ${params.timeField} < '${params.endDate}'`;
+  const timeFilter = `${params.timeField} >= '${params.startDate}' AND ${params.timeField} < '${params.endDate}'`;
 
-    const serviceFilter = params.service_name && params.service_name !== 'all' ? `service_name = '${params.service_name}'` : '1=1';
+  const serviceFilter = params.service_name && params.service_name !== 'all' ? `service_name = '${params.service_name}'` : '1=1';
 
-    const operationFilter = params.operation && params.operation !== 'all' ? `span_name = '${params.operation}'` : '1=1';
+  const operationFilter = params.operation && params.operation !== 'all' ? `span_name = '${params.operation}'` : '1=1';
 
-    const statusFilter = params.statusCode && params.statusCode !== 'all' ? `status_code = '${params.statusCode}'` : '1=1';
+  const statusFilter = params.statusCode && params.statusCode !== 'all' ? `status_code = '${params.statusCode}'` : '1=1';
 
-    const minDuration = parseDuration(params.minDuration);
-    const maxDuration = parseDuration(params.maxDuration);
+  const minDuration = parseDuration(params.minDuration);
+  const maxDuration = parseDuration(params.maxDuration);
 
-    let durationFilter = '1=1';
-    if (minDuration > 0 && maxDuration > 0) {
-        durationFilter = `trace_duration BETWEEN ${minDuration} AND ${maxDuration}`;
-    } else if (minDuration > 0) {
-        durationFilter = `trace_duration >= ${minDuration}`;
-    } else if (maxDuration > 0) {
-        durationFilter = `trace_duration <= ${maxDuration}`;
-    }
+  let durationFilter = '1=1';
+  if (minDuration > 0 && maxDuration > 0) {
+    durationFilter = `trace_duration BETWEEN ${minDuration} AND ${maxDuration}`;
+  } else if (minDuration > 0) {
+    durationFilter = `trace_duration >= ${minDuration}`;
+  } else if (maxDuration > 0) {
+    durationFilter = `trace_duration <= ${maxDuration}`;
+  }
 
-    const tagsFilter = tagsToDorisSQLConditions(params.tags);
+  const tagsFilter = tagsToDorisSQLConditions(params.tags);
 
-    let rootSpansFilter = '1=1';
-    if (params.service_name && params.service_name !== 'all') {
-        rootSpansFilter = `service_name = '${params.service_name}'`;
-    }
-    if (params.operation && params.operation !== 'all') {
-        rootSpansFilter += ` AND span_name = '${params.operation}'`;
-    }
+  let rootSpansFilter = '1=1';
+  if (params.service_name && params.service_name !== 'all') {
+    rootSpansFilter = `service_name = '${params.service_name}'`;
+  }
+  if (params.operation && params.operation !== 'all') {
+    rootSpansFilter += ` AND span_name = '${params.operation}'`;
+  }
 
-    const limit = params.page_size ?? 1000;
-    const offset = Math.max(((params.page ?? 1) - 1) * limit, 0);
+  const limit = params.page_size ?? 1000;
+  const offset = Math.max(((params.page ?? 1) - 1) * limit, 0);
 
-    let rowNumberOrderBy = 'time DESC';
-    switch (params.sortBy) {
-        case 'longest-duration':
-            rowNumberOrderBy = 'trace_duration_ms DESC';
-            break;
-        case 'shortest-duration':
-            rowNumberOrderBy = 'trace_duration_ms ASC';
-            break;
-        case 'most-spans':
-            rowNumberOrderBy = 'spans DESC';
-            break;
-        case 'least-spans':
-            rowNumberOrderBy = 'spans ASC';
-            break;
-        case 'most-recent':
-            rowNumberOrderBy = 'time DESC';
-            break;
-    }
+  let rowNumberOrderBy = 'time DESC';
+  switch (params.sortBy) {
+    case 'longest-duration':
+      rowNumberOrderBy = 'trace_duration_ms DESC';
+      break;
+    case 'shortest-duration':
+      rowNumberOrderBy = 'trace_duration_ms ASC';
+      break;
+    case 'most-spans':
+      rowNumberOrderBy = 'spans DESC';
+      break;
+    case 'least-spans':
+      rowNumberOrderBy = 'spans ASC';
+      break;
+    case 'most-recent':
+      rowNumberOrderBy = 'time DESC';
+      break;
+  }
 
-    const query = `
+  const query = `
 USE ${params.database};
 
 WITH
@@ -175,12 +175,13 @@ WITH
     GROUP BY t.trace_id, d.trace_duration
   ),
   root_spans AS (
-    SELECT
-      trace_id,
-      span_name AS operation,
-      service_name AS root_service
+    SELECT trace_id, span_name AS operation, service_name AS root_service
     FROM ${params.table}
-    WHERE (parent_span_id IS NULL OR parent_span_id = '') AND ${rootSpansFilter} AND ${timeFilter}
+    WHERE (parent_span_id IS NULL
+    OR parent_span_id = '')
+    AND ${timeFilter}
+    AND ${rootSpansFilter}
+    group by trace_id,operation,root_service
   ),
   aggregated AS (
     SELECT
@@ -215,11 +216,11 @@ WHERE rn > ${offset} AND rn <= ${offset + limit}
 ORDER BY ${rowNumberOrderBy};
 `;
 
-    return query;
+  return query;
 }
 
 export function getServiceListSQL(params: TracesServicesParams): string {
-    return `
+  return `
     SELECT DISTINCT service_name 
     FROM ${params.table} 
     WHERE ${params.timeField} BETWEEN '${params.startDate}' AND '${params.endDate}' 
@@ -228,7 +229,7 @@ export function getServiceListSQL(params: TracesServicesParams): string {
 }
 
 export function getOperationListSQL(params: TracesOperationsParams): string {
-    return `
+  return `
     SELECT DISTINCT span_name 
     FROM ${params.table} 
     WHERE ${params.timeField} BETWEEN '${params.startDate}' AND '${params.endDate}' 
