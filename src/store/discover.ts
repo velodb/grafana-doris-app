@@ -12,18 +12,18 @@ export const dataFilterAtom = atom<DataFilterType[]>([]);
 export const discoverCurrentAtom = atom<DiscoverCurrent>(DISCOVER_DEFAULT_STATUS);
 
 // databases
-export const databasesAtom = atom<any>([]);
+export const databasesAtom = atomWithStorage<any>('discover-databases', []);
 export const settingDatabasesAtom = atom<any>([]);
-export const tablesAtom = atom<any>([]);
+export const tablesAtom = atomWithStorage<any>('discover-tables', []);
 export const settingTablesAtom = atom<any>([]);
 
-export const currentCatalogAtom = atom('internal');
-export const searchTypeAtom = atom<'SQL' | 'Search' | 'Lucene'>('Lucene');
+export const currentCatalogAtom = atomWithStorage<string>('discover-current-catalog', 'internal');
+export const searchTypeAtom = atomWithStorage<'SQL' | 'Search' | 'Lucene'>('discover-search-type', 'Lucene');
 export const currentDatabaseAtom = selectAtom(discoverCurrentAtom, current => current.database);
 export const currentTableAtom = atom<string>('');
 export const currentClusterAtom = atom('');
-export const currentTimeFieldAtom = selectAtom(discoverCurrentAtom, current => current.timeField);
-export const currentDateAtom = atom<Dayjs[]>(DISCOVER_SHORTCUTS[2].range());
+export const currentTimeFieldAtom = atomWithStorage<string>('discover-current-timefield', DISCOVER_DEFAULT_STATUS.timeField);
+export const currentDateAtom = atom<Dayjs[]>( DISCOVER_SHORTCUTS[2].range());
 export const currentIndexAtom = atom<any>([]);
 export const selectedIndexesAtom = atom<any>([]);
 export const searchValueAtom = atom('');
@@ -68,7 +68,7 @@ export const surroundingTableFieldsAtom = atom<any[]>([]);
 export const surroundingSelectedFieldsAtom = atom<any[]>([]);
 
 export const datasourcesAtom = atom<Array<DataSourceInstanceSettings<DataSourceJsonData>>>([]);
-export const selectedDatasourceAtom = atom<DataSourceInstanceSettings<DataSourceJsonData>>();
+export const selectedDatasourceAtom = atomWithStorage<DataSourceInstanceSettings<DataSourceJsonData> | undefined>('discover-selected-datasource', undefined);
 export const timeRangeAtom = atom<any>({
     from: DISCOVER_SHORTCUTS[2].range()[0].toDate(),
     to: DISCOVER_SHORTCUTS[2].range()[1].toDate(),
