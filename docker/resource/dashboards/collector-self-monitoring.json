@@ -1250,7 +1250,7 @@
   "timepicker": {},
   "timezone": "",
   "title": "Collector Self-Monitoring",
-  "uid": "dog-collector-self-monitoring",
+  "uid": "oos-collector-self-monitoring",
   "version": 1,
   "weekStart": ""
 }
