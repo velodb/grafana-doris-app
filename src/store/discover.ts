@@ -9,21 +9,21 @@ import { AggregatableEnum, DISCOVER_DEFAULT_STATUS, DISCOVER_SHORTCUTS, FieldTyp
 
 export const locationAtom = atomWithLocation();
 export const dataFilterAtom = atom<DataFilterType[]>([]);
-export const discoverCurrentAtom = atom<DiscoverCurrent>(DISCOVER_DEFAULT_STATUS);
+export const discoverCurrentAtom = atomWithStorage<DiscoverCurrent>('discover-current', DISCOVER_DEFAULT_STATUS);
 
 // databases
 export const databasesAtom = atom<any>([]);
 export const settingDatabasesAtom = atom<any>([]);
-export const tablesAtom = atom<any>([]);
+export const tablesAtom = atomWithStorage<any>('discover-tables', []);
 export const settingTablesAtom = atom<any>([]);
 
-export const currentCatalogAtom = atom('internal');
-export const searchTypeAtom = atom<'SQL' | 'Search' | 'Lucene'>('Lucene');
+export const currentCatalogAtom = atomWithStorage<string>('discover-current-catalog', 'internal');
+export const searchTypeAtom = atomWithStorage<'SQL' | 'Search' | 'Lucene'>('discover-search-type', 'Lucene');
 export const currentDatabaseAtom = selectAtom(discoverCurrentAtom, current => current.database);
-export const currentTableAtom = atom<string>('');
+export const currentTableAtom = atomWithStorage<string>('discover-current-table', '');
 export const currentClusterAtom = atom('');
 export const currentTimeFieldAtom = selectAtom(discoverCurrentAtom, current => current.timeField);
-export const currentDateAtom = atom<Dayjs[]>(DISCOVER_SHORTCUTS[2].range());
+export const currentDateAtom = atom<Dayjs[]>( DISCOVER_SHORTCUTS[2].range());
 export const currentIndexAtom = atom<any>([]);
 export const selectedIndexesAtom = atom<any>([]);
 export const searchValueAtom = atom('');
@@ -33,9 +33,9 @@ export const dorisInfoAtom = atom<any>({});
 export const disabledOptionsAtom = atom<string[]>([]);
 
 export const selectedFieldsAtom = atom<any[]>([]);
-export const tableFieldsAtom = atom<any[]>([]);
+export const tableFieldsAtom = atomWithStorage<any[]>('discover-table-fields', []);
 
-export const timeFieldsAtom = atom<any[]>([]);
+export const timeFieldsAtom = atomWithStorage<any[]>('discover-time-fields',[]);
 export const tableDataAtom = atom<any[]>([]);
 export const topDataAtom = atom<any[]>([]);
 export const surroundingTableDataAtom = atom<any[]>([]);
@@ -68,7 +68,7 @@ export const surroundingTableFieldsAtom = atom<any[]>([]);
 export const surroundingSelectedFieldsAtom = atom<any[]>([]);
 
 export const datasourcesAtom = atom<Array<DataSourceInstanceSettings<DataSourceJsonData>>>([]);
-export const selectedDatasourceAtom = atom<DataSourceInstanceSettings<DataSourceJsonData>>();
+export const selectedDatasourceAtom = atomWithStorage<DataSourceInstanceSettings<DataSourceJsonData> | undefined>('discover-selected-datasource', undefined);
 export const timeRangeAtom = atom<any>({
     from: DISCOVER_SHORTCUTS[2].range()[0].toDate(),
     to: DISCOVER_SHORTCUTS[2].range()[1].toDate(),
