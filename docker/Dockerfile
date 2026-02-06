@@ -2,7 +2,7 @@ FROM alpine:3.19
 
 RUN mkdir -p /assets/plugins
 
-COPY resouece/dashboards/ /assets/dashboards/
+COPY resource/dashboards/ /assets/dashboards/
 COPY resource/doris-app/ /assets/plugins/doris-app/
 
 # Metadata
