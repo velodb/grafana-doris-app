@@ -1,6 +1,6 @@
 {
   "name": "doris-app",
-  "version": "1.0.1-alpha.3",
+  "version": "1.0.1",
   "scripts": {
     "build": "webpack -c ./webpack.config.ts --env production",
     "dev": "webpack -w -c ./webpack.config.ts --env development",
