@@ -45,3 +45,6 @@ ci/
 .vscode
 
 .eslintcache
+
+# MacOS
+.DS_Store
