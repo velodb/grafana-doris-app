@@ -506,8 +506,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "OTel Overview - DOG Observability",
-  "uid": "dog-otel-overview",
+  "title": "OTel Overview - Open Observability Stack",
+  "uid": "oos-otel-overview",
   "version": 1,
   "weekStart": ""
 }
