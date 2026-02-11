@@ -1250,7 +1250,7 @@
   "timepicker": {},
   "timezone": "",
   "title": "Collector Self-Monitoring",
-  "uid": "oos-collector-self-monitoring",
+  "uid": "aiobs-collector-self-monitoring",
   "version": 1,
   "weekStart": ""
 }

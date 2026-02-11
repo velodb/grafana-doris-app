@@ -506,8 +506,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "OTel Overview - Open Observability Stack",
-  "uid": "oos-otel-overview",
+  "title": "OTel Overview - AIObserve Stack",
+  "uid": "aiobs-otel-overview",
   "version": 1,
   "weekStart": ""
 }
