@@ -52,7 +52,7 @@ describe('getWhereSQLViaLucene', () => {
             query: 'status:200',
         });
 
-        expect(result).toBe("(`status` = CAST('200', 'Float64'))");
+        expect(result).toBe("(`status` = CAST('200' AS DOUBLE))");
         expect(mockedGetColumn).toHaveBeenCalledWith({
             column: 'status',
             connectionId: 'conn-1',

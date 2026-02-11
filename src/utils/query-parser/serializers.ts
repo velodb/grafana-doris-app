@@ -185,7 +185,7 @@ export abstract class SQLSerializer implements Serializer {
                 normTerm === 'true' ? 1 : normTerm === 'false' ? 0 : parseInt(normTerm, 10),
             ]);
         } else if (propertyType === JSDataType.Number) {
-            return SqlString.format(`(${column} ${isNegatedField ? '!' : ''}= CAST(?, 'Float64'))`, [term]);
+            return SqlString.format(`(${column} ${isNegatedField ? '!' : ''}= CAST(? AS DOUBLE))`, [term]);
         } else if (propertyType === JSDataType.JSON) {
             return SqlString.format(`(${columnJSON?.string} ${isNegatedField ? '!' : ''}= ?)`, [term]);
         } else if (propertyType === JSDataType.String && supportsTextSearch) {
@@ -294,7 +294,7 @@ export abstract class SQLSerializer implements Serializer {
                 normTerm === 'true' ? 1 : normTerm === 'false' ? 0 : parseInt(normTerm, 10),
             ]);
         } else if (propertyType === JSDataType.Number) {
-            return SqlString.format(`(?? ${isNegatedField ? '!' : ''}= CAST(?, 'Float64'))`, [column, term]);
+            return SqlString.format(`(?? ${isNegatedField ? '!' : ''}= CAST(? AS DOUBLE))`, [column, term]);
         } else if (propertyType === JSDataType.JSON && supportsTextSearch === false) {
             return this.NOT_FOUND_QUERY;
         }
@@ -346,7 +346,7 @@ export abstract class SQLSerializer implements Serializer {
                             if (!identifier) {
                                 return null;
                             }
-                            return SqlString.format(`(?? = CAST(?, 'Float64'))`, [identifier, term]);
+                            return SqlString.format(`(?? = CAST(? AS DOUBLE))`, [identifier, term]);
                         }
 
                         if (target.propertyType === JSDataType.Bool) {
