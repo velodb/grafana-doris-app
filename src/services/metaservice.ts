@@ -1,6 +1,7 @@
 import { toDataFrame } from '@grafana/data';
 import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
+import { withErrorHandler } from 'components/with-error-handler/withErrorHandler';
 
 type GetColumnParams = {
     connectionId: string;
@@ -141,7 +142,7 @@ WHERE TABLE_SCHEMA = '${escapeSqlLiteral(database)}'
 LIMIT 1;
 `;
 
-    const response$ = getBackendSrv().fetch({
+    const response$ = withErrorHandler(getBackendSrv().fetch({
         url: '/api/ds/query',
         method: 'POST',
         data: {
@@ -154,7 +155,7 @@ LIMIT 1;
                 },
             ],
         },
-    });
+    }));
 
     try {
         const { data, ok } = await lastValueFrom(response$);
@@ -214,7 +215,7 @@ export async function getInvertedIndexColumns({
 
     const query = `SHOW INDEXES FROM \`${database}\`.\`${table}\``;
 
-    const response$ = getBackendSrv().fetch({
+    const response$ = withErrorHandler(getBackendSrv().fetch({
         url: '/api/ds/query',
         method: 'POST',
         data: {
@@ -227,7 +228,7 @@ export async function getInvertedIndexColumns({
                 },
             ],
         },
-    });
+    }));
 
     try {
         const { data, ok } = await lastValueFrom(response$);
@@ -301,11 +302,11 @@ export function getDatabases(selectdbDS: any) {
             ],
         },
     });
-    return response$;
+    return withErrorHandler(response$);
 }
 
 export function getTablesService({ selectdbDS, database }: { selectdbDS: any; database: string }) {
-    return getBackendSrv().fetch({
+    return withErrorHandler(getBackendSrv().fetch({
         url: '/api/ds/query',
         method: 'POST',
         data: {
@@ -318,11 +319,11 @@ export function getTablesService({ selectdbDS, database }: { selectdbDS: any; da
                 },
             ],
         },
-    });
+    }));
 }
 
 export function getFieldsService({ selectdbDS, database, table }: { selectdbDS: any; database: string; table: string }) {
-    return getBackendSrv().fetch({
+    return withErrorHandler(getBackendSrv().fetch({
         url: '/api/ds/query',
         method: 'POST',
         data: {
@@ -335,7 +336,7 @@ export function getFieldsService({ selectdbDS, database, table }: { selectdbDS: 
                 },
             ],
         },
-    });
+    }));
 }
 
 export function getColumnFromFieldService({ selectdbDS, database, table }: { selectdbDS: any; database: string; table: string }) {
@@ -356,7 +357,7 @@ export function getColumnFromFieldService({ selectdbDS, database, table }: { sel
 }
 
 export function getIndexesService({ selectdbDS, database, table }: { selectdbDS: any; database: string; table: string }) {
-    return getBackendSrv().fetch({
+    return withErrorHandler(getBackendSrv().fetch({
         url: '/api/ds/query',
         method: 'POST',
         data: {
@@ -369,5 +370,5 @@ export function getIndexesService({ selectdbDS, database, table }: { selectdbDS:
                 },
             ],
         },
-    });
+    }));
 }

@@ -1,11 +1,12 @@
 import { getBackendSrv } from "@grafana/runtime";
 import { buildTraceAggSQLFromParams, getOperationListSQL, getQueryTableTraceSQL, getServiceListSQL } from "./traces.sql";
+import { withErrorHandler } from "components/with-error-handler/withErrorHandler";
 
 // 获取table的Trace数据
 export function getTableDataTraceService(payload: any) {
     const { selectdbDS, ...rest } = payload;
     const traceSQL = getQueryTableTraceSQL(rest);
-    return getBackendSrv().fetch({
+    return withErrorHandler(getBackendSrv().fetch({
         url: '/api/ds/query',
         method: 'POST',
         data: {
@@ -22,14 +23,14 @@ export function getTableDataTraceService(payload: any) {
             ],
         },
         credentials: 'include',
-    });
+    }));
 }
 
 // 查询Traces
 export function getTracesService(payload: any) {
     const { selectdbDS, ...rest } = payload;
     const getTracesSQL = buildTraceAggSQLFromParams(rest);
-    return getBackendSrv().fetch({
+    return withErrorHandler(getBackendSrv().fetch({
         url: '/api/ds/query',
         method: 'POST',
         data: {
@@ -46,14 +47,14 @@ export function getTracesService(payload: any) {
             ],
         },
         credentials: 'include',
-    });
+    }));
 }
 
 // 查询Trace Services
 export function getServiceListService(payload: any) {
     const { selectdbDS, ...rest } = payload;
     const serviceListSQL = getServiceListSQL(rest);
-    return getBackendSrv().fetch({
+    return withErrorHandler(getBackendSrv().fetch({
         url: '/api/ds/query',
         method: 'POST',
         data: {
@@ -70,14 +71,14 @@ export function getServiceListService(payload: any) {
             ],
         },
         credentials: 'include',
-    });
+    }));
 }
 
 // 查询Trace Operations
 export function getOperationListService(payload: any) {
     const { selectdbDS, ...rest } = payload;
     const operationListSQL = getOperationListSQL(rest);
-    return getBackendSrv().fetch({
+    return withErrorHandler(getBackendSrv().fetch({
         url: '/api/ds/query',
         method: 'POST',
         data: {
@@ -94,7 +95,7 @@ export function getOperationListService(payload: any) {
             ],
         },
         credentials: 'include',
-    });
+    }));
 }
 
 
