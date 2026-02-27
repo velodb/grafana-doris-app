@@ -46,7 +46,7 @@ export const getFieldType = (columnType: string | undefined) => {
 
 export const DISCOVER_DEFAULT_STATUS: DiscoverCurrent = {
     catalog: 'internal',
-    database: '',
+    database: 'otel',
     table: '',
     cluster: '',
     timeField: '',
@@ -269,7 +269,7 @@ export const DISCOVER_SHORTCUTS = [
     {
         key: nanoid(),
         text: `Last 7 Days`,
-        label: `Last 1 Days`,
+        label: `Last 7 Days`,
         raw: {
             from: 'now-7d',
             to: 'now',
@@ -375,6 +375,13 @@ export const TIME_INTERVALS = [
 ];
 
 export const PAGESIZE_OPTIONS = [10, 20, 50, 100, 200];
+
+export const INIT_DEMO_DATA = {
+    datasource: 'otel',
+    logTable: 'otel_logs',
+    tracesTable: 'otel_traces',
+    dsUid: 'ffeef8f5kln28f'
+}
 
 export const FIELD_TYPES = [
     {
@@ -761,7 +768,7 @@ export function generateHighlightedResults(data: { search_value: string; indexes
                         highlightValue = itemValue;
                     } else if (strValue.includes(parsedKeyword)) {
                         // highlightValue = highlightDelimiter(strValue, parsedKeyword);
-                          highlightValue = strValue;
+                        highlightValue = strValue;
                     }
                 } else {
                     const tokenizedAns = Array.from(jsTokens(strValue)).map(item => item.value);
@@ -819,5 +826,5 @@ export function generateHighlightedResults(data: { search_value: string; indexes
     return _sourceResult;
 }
 
-export const QUERY_TRACE_FIELDS = ['trace_id','span_id','parent_span_id','span_name','service_name']
+export const QUERY_TRACE_FIELDS = ['trace_id', 'span_id', 'parent_span_id', 'span_name', 'service_name']
 

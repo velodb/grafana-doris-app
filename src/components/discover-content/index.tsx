@@ -30,7 +30,7 @@ import SurroundingLogs from 'components/surrounding-logs';
 import TraceDetail from 'components/trace-detail';
 import { usePluginContext } from '@grafana/data';
 import type { AppPluginSettings } from 'components/AppConfig/AppConfig';
-import { formatTimestampToDateTime, isValidTimeFieldType } from 'utils/data';
+import { formatTimestampToDateTime, isValidTimeFieldType, INIT_DEMO_DATA } from 'utils/data';
 
 
 export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetchNextPage: (page: number) => void; getTraceData: (traceId: string, table?: string, callback?: Function) => any }) {
@@ -58,10 +58,9 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
     const context = usePluginContext();
     // user settings
     const jsonData = context.meta.jsonData || {};
-    console.log('jsonData', jsonData);
 
     const { logsConfig = {} } = jsonData as AppPluginSettings;
-    const { database = "", datasource = {}, logsTable = "", targetTraceTable = "" } = logsConfig;
+    const { database = "", datasource = {}, logsTable = "", targetTraceTable = INIT_DEMO_DATA.tracesTable } = logsConfig;
     // local input state for page-jump control
     const [jumpPage, setJumpPage] = useState<string>(String(page));
 
@@ -69,7 +68,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
         setJumpPage(String(page));
     }, [page]);
 
-    const isTargetLogTable = discoverCurrent.table === logsTable && discoverCurrent.database === database && currentDatasource?.id === datasource?.id;
+    const isTargetLogTable = true;
 
     useEffect(() => {
         if (theme.isDark) {

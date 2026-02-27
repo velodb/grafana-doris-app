@@ -1,5 +1,5 @@
 'use client';
-import React, { PropsWithChildren, useEffect } from 'react';
+import React, { PropsWithChildren, useEffect, useState } from 'react';
 import dayjs from 'dayjs';
 import { DiscoverHeaderSearch } from './discover-header.style';
 import SearchType from './search-type';
@@ -26,13 +26,15 @@ import {
     databasesAtom,
     tablesAtom,
     currentTableAtom,
+    initDS
 } from 'store/discover';
-import { getLatestTime, isValidTimeFieldType } from 'utils/data';
+import { getLatestTime, isValidTimeFieldType, INIT_DEMO_DATA } from 'utils/data';
 import { Select, Field, Button, useTheme2, TimeRangeInput } from '@grafana/ui';
 import { FORMAT_DATE } from '../../constants';
 import { getDatabases, getFieldsService, getIndexesService, getTablesService } from 'services/metaservice';
 import { Subscription } from 'rxjs';
 import { toDataFrame } from '@grafana/data';
+import { getDataSourceSrv } from '@grafana/runtime'
 import Lucene from './lucene';
 
 export default function DiscoverHeader(
@@ -66,11 +68,13 @@ export default function DiscoverHeader(
     // const startTime = loc.searchParams?.get('startTime');
     // const endTime = loc.searchParams?.get('endTime');
     const [selectedDatasource, setSelectedDatasource] = useAtom(selectedDatasourceAtom);
+
     const [timeRange, setTimeRange] = useAtom(timeRangeAtom);
     const [currentTable, setCurrentTable] = useAtom(currentTableAtom);
     const [databases, setDatabases] = useAtom(databasesAtom);
     const [tables, setTables] = useAtom(tablesAtom);
     const [_datasources] = useAtom(datasourcesAtom);
+    const [initDataSource, setInitDataSource] = useAtom(initDS);
     const searchType = useAtomValue(searchTypeAtom);
     const searchMode = searchType === 'Search';
 
@@ -107,6 +111,7 @@ export default function DiscoverHeader(
     }, [selectdbDS, fetchDatabases]);
 
     function getFields(selectedTable: any) {
+
         getFieldsService({
             selectdbDS,
             database: discoverCurrent.database,
@@ -115,7 +120,6 @@ export default function DiscoverHeader(
             next: ({ data, ok }: any) => {
                 if (ok) {
                     const frame = toDataFrame(data.results.getFields.frames[0]);
-                    console.log('frame', frame);
                     const values = Array.from(frame.fields[0].values);
                     const fieldTypes = Array.from(frame.fields[1].values);
 
@@ -141,8 +145,7 @@ export default function DiscoverHeader(
                                     value: item,
                                 };
                             });
-                            console.log('bbb,',discoverCurrent);
-                            
+
                         setDiscoverCurrent({
                             ...discoverCurrent,
                             table: selectedTable.value,
@@ -199,6 +202,47 @@ export default function DiscoverHeader(
         });
     }
 
+    async function initHeaderData() {
+        const ds = await getDataSourceSrv().get({ uid: INIT_DEMO_DATA.dsUid });
+        setInitDataSource(ds);
+        setSelectedDatasource(ds as any)
+    }
+
+    useEffect(() => {
+        if (initDataSource) {
+            fetchDatabases(initDataSource)
+            getTablesService({
+                selectdbDS: initDataSource,
+                database: INIT_DEMO_DATA.datasource,
+            }).subscribe({
+                next: (resp: any) => {
+                    const { data, ok } = resp;
+                    if (ok) {
+                        const frame = toDataFrame(data.results.getTables.frames[0]);
+                        const values = Array.from(frame.fields[0].values);
+                        const options = values.map((item: string) => ({ label: item, value: item }));
+                        setTables(options);
+                        setCurrentTable(INIT_DEMO_DATA.logTable);
+                        setDiscoverCurrent({
+                            ...discoverCurrent,
+                            database: INIT_DEMO_DATA.datasource,
+                            table: INIT_DEMO_DATA.logTable,
+                        });
+                        getFields({ value: INIT_DEMO_DATA.logTable });
+                        getIndexes({ value: INIT_DEMO_DATA.logTable });
+                        props?.onQuerying()
+                    }
+                },
+                error: (err: any) => console.log('Fetch Error', err),
+            });
+        }
+    }, [initDataSource])
+
+
+    useEffect(() => {
+        initHeaderData()
+    }, [])
+
     return (
         <div
             className={css`
@@ -213,20 +257,19 @@ export default function DiscoverHeader(
                 <Field label="Datasource">
                     {/* filter 这个版本无效 */}
                     <DataSourcePicker
-                         width={20}
-                         type={'mysql'}
-                         current={selectedDatasource}
-                         placeholder="Choose"
-                         noDefault
-                         filter={ds => ds.type === 'mysql'}
-                         onChange={item => {
-                             console.log('item', item);
-                             setSelectedDatasource(item);
-                             // Always fetch databases even if the same datasource is selected
-                             fetchDatabases(item);
-                         }}
-                     />
-                 </Field>
+                        width={20}
+                        type={'mysql'}
+                        current={selectedDatasource}
+                        placeholder="Choose"
+                        noDefault
+                        filter={ds => ds.type === 'mysql'}
+                        onChange={item => {
+                            setSelectedDatasource(item);
+                            // Always fetch databases even if the same datasource is selected
+                            fetchDatabases(item);
+                        }}
+                    />
+                </Field>
                 {/* 需要从数据源中获取库表信息 */}
                 <Field label="Database" style={{ marginLeft: 8 }}>
                     <Select
@@ -238,6 +281,7 @@ export default function DiscoverHeader(
                                 ...discoverCurrent,
                                 database: selectedDatabase.value,
                             });
+
                             getTablesService({
                                 selectdbDS,
                                 database: selectedDatabase.value,
@@ -263,8 +307,6 @@ export default function DiscoverHeader(
                         width={15}
                         value={currentTable}
                         onChange={(selectedTable: any) => {
-                            console.log('selectedTable.value',selectedTable.value);
-                            
                             setDiscoverCurrent({
                                 ...discoverCurrent,
                                 table: selectedTable.value,
