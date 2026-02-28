@@ -22,8 +22,9 @@ import {
     databasesAtom,
     tablesAtom,
     disabledOptionsAtom,
+    initDS
 } from 'store/discover';
-import { isValidTimeFieldType } from 'utils/data';
+import { isValidTimeFieldType, INIT_DEMO_DATA } from 'utils/data';
 import { Select, Field, useTheme2, TimeRangeInput } from '@grafana/ui';
 import { FORMAT_DATE } from '../../../constants';
 import { getDatabases, getFieldsService, getIndexesService, getTablesService } from 'services/metaservice';
@@ -52,6 +53,7 @@ export default function TracesHeader() {
     const [tables, setTables] = useAtom(tablesAtom);
     const [_datasources, setDataSource] = useAtom(datasourcesAtom);
     const setDisabledOptions = useSetAtom(disabledOptionsAtom);
+    const [initDataSource, setInitDataSource] = useAtom(initDS);
 
     const selectdbDS = useAtomValue(selectedDatasourceAtom);
 
@@ -180,6 +182,45 @@ export default function TracesHeader() {
             },
         });
     }
+
+    async function initHeaderData() {
+        const ds = await getDataSourceSrv().get({ uid: INIT_DEMO_DATA.dsUid });
+        setInitDataSource(ds);
+        setSelectedDatasource(ds as any)
+    }
+
+    useEffect(() => {
+        if (initDataSource) {
+            getTablesService({
+                selectdbDS: initDataSource,
+                database: INIT_DEMO_DATA.datasource,
+            }).subscribe({
+                next: (resp: any) => {
+                    const { data, ok } = resp;
+                    if (ok) {
+                        const frame = toDataFrame(data.results.getTables.frames[0]);
+                        const values = Array.from(frame.fields[0].values);
+                        const options = values.map((item: string) => ({ label: item, value: item }));
+                        setTables(options);
+                        setCurrentTable(INIT_DEMO_DATA.tracesTable);
+                        setDiscoverCurrent({
+                            ...discoverCurrent,
+                            database: INIT_DEMO_DATA.datasource,
+                            table: INIT_DEMO_DATA.tracesTable,
+                        });
+                        getFields({ value: INIT_DEMO_DATA.tracesTable });
+                        getIndexes({ value: INIT_DEMO_DATA.tracesTable });
+                    }
+                },
+                error: (err: any) => console.log('Fetch Error', err),
+            });
+        }
+    }, [initDataSource])
+
+
+    useEffect(() => {
+        initHeaderData()
+    }, [])
 
     return (
         <div
