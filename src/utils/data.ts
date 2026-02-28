@@ -377,10 +377,10 @@ export const TIME_INTERVALS = [
 export const PAGESIZE_OPTIONS = [10, 20, 50, 100, 200];
 
 export const INIT_DEMO_DATA = {
-    datasource: 'otel',
+    datasource:'otel',
     logTable: 'otel_logs',
     tracesTable: 'otel_traces',
-    dsUid: 'ffeef8f5kln28f'
+    dsUid: 'doris'
 }
 
 export const FIELD_TYPES = [
