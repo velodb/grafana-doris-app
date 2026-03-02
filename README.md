@@ -10,24 +10,7 @@ App plugins can let you create a custom out-of-the-box monitoring experience by 
 
 ### Backend
 
-1. Update [Grafana plugin SDK for Go](https://grafana.com/developers/plugin-tools/key-concepts/backend-plugins/grafana-plugin-sdk-for-go) dependency to the latest minor version:
-
-   ```bash
-   go get -u github.com/grafana/grafana-plugin-sdk-go
-   go mod tidy
-   ```
-
-2. Build backend plugin binaries for Linux, Windows and Darwin:
-
-   ```bash
-   mage -v
-   ```
-
-3. List all available Mage targets for additional commands:
-
-   ```bash
-   mage -l
-   ```
+This plugin is frontend-only and does not include a Go backend.
 
 ### Frontend
 
@@ -65,20 +48,7 @@ App plugins can let you create a custom out-of-the-box monitoring experience by 
    npm run server
    ```
 
-6. Run the E2E tests (using Playwright)
-
-   ```bash
-   # Spins up a Grafana instance first that we tests against
-   npm run server
-
-   # If you wish to start a certain Grafana version. If not specified will use latest by default
-   GRAFANA_VERSION=11.3.0 npm run server
-
-   # Starts the tests
-   npm run e2e
-   ```
-
-7. Run the linter
+6. Run the linter
 
    ```bash
    npm run lint

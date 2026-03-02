@@ -3,7 +3,7 @@ FROM alpine:3.19
 RUN mkdir -p /assets/plugins
 
 COPY resource/dashboards/ /assets/dashboards/
-COPY resource/doris-app/ /assets/plugins/doris-app/
+COPY resource/velodb-doris-app/ /assets/plugins/velodb-doris-app/
 
 # Metadata
 LABEL org.opencontainers.image.title="DOGStack Grafana Assets"
