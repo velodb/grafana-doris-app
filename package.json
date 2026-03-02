@@ -27,13 +27,12 @@
     "@types/jest": "^29.5.0",
     "@types/node": "^20.8.7",
     "@types/testing-library__jest-dom": "5.14.8",
-    "@typescript-eslint/eslint-plugin": "^6.18.0",
-    "@typescript-eslint/parser": "^6.18.0",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
     "copy-webpack-plugin": "^11.0.0",
     "css-loader": "^6.7.3",
     "eslint": "^8.0.0",
     "eslint-config-prettier": "^8.8.0",
-    "eslint-plugin-deprecation": "^2.0.0",
     "eslint-plugin-jsdoc": "^46.8.0",
     "eslint-plugin-react": "^7.33.0",
     "eslint-plugin-react-hooks": "^4.6.0",
@@ -61,6 +60,9 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "resolutions": {
+    "**/serialize-javascript": "^7.0.3"
   },
   "dependencies": {
     "@emotion/css": "11.10.6",

@@ -8,7 +8,8 @@ import dayjs from 'dayjs';
 import localeData from 'dayjs/plugin/localeData';
 import weekday from 'dayjs/plugin/weekday';
 import utc from 'dayjs/plugin/utc';
-import '../styles/tailwind.css';
+
+declare let __webpack_public_path__: string;
 
 dayjs.extend(weekday);
 dayjs.extend(localeData);
@@ -19,6 +20,25 @@ const supportedLocales = ['en', 'zh-cn', 'fr'];
 
 const locale = supportedLocales.includes(browserLang) ? browserLang : 'en';
 dayjs.locale(locale);
+
+function ensureTailwindStylesheet() {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  const stylesheetId = 'velodb-doris-app-tailwind';
+  if (document.getElementById(stylesheetId)) {
+    return;
+  }
+
+  const link = document.createElement('link');
+  link.id = stylesheetId;
+  link.rel = 'stylesheet';
+  link.href = `${__webpack_public_path__}static/tailwind.css`;
+  document.head.appendChild(link);
+}
+
+ensureTailwindStylesheet();
 
 const App = (props: AppRootProps) => (
   <Suspense fallback={<LoadingPlaceholder text="" />}>
@@ -38,4 +58,3 @@ export const plugin = new AppPlugin<{}>().setRootPage(App).addConfigPage({
   body: AppConfig,
   id: 'configuration',
 });
-
