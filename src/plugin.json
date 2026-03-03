@@ -5,7 +5,9 @@
   "id": "velodb-doris-app",
   "backend": false,
   "info": {
-    "keywords": ["app"],
+    "keywords": [
+      "app"
+    ],
     "description": "",
     "author": {
       "name": "VeloDB"
@@ -14,12 +16,16 @@
       "small": "img/logo.svg",
       "large": "img/logo.svg"
     },
-    "screenshots": [],
+    "screenshots": [
+      {
+        "name": "Discover",
+        "path": "img/doris-app.png"
+      }
+    ],
     "version": "%VERSION%",
     "updated": "%TODAY%"
   },
   "includes": [
-
     {
       "type": "page",
       "name": "Discover",
