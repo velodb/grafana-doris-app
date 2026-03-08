@@ -210,15 +210,13 @@ export default function PageTrace() {
         if (currentTimeField && currentTable && currentCatalog && currentDatabase && currentDate) {
             getTraces();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, pageSize, currentTimeField, currentDate, sort]);
+    }, [page, pageSize, currentTimeField, currentDate, sort, currentTable, currentCatalog, currentDatabase, selectdbDS, getTraces]);
 
     useEffect(() => {
         if (currentTimeField && currentTable && currentCatalog && currentDatabase && currentDate) {
             getTracesServices();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentTimeField, currentDate, sort]);
+    }, [currentTimeField, currentDate, sort, currentTable, currentCatalog, currentDatabase, selectdbDS, getTracesServices]);
 
     useEffect(() => {
         if (currentTimeField && currentTable && currentCatalog && currentDatabase && currentService) {

@@ -75,7 +75,6 @@ export const timeRangeAtom = atom<any>({
     raw: DISCOVER_SHORTCUTS[2].raw,
 });
 
-
 export const discoverLoadingAtom = atom({
     getTableData: false,
     getTopData: false,

@@ -1,8 +1,9 @@
 import { DEFAULT_OPERATION, DEFAULT_SERVICE } from '../constants';
 import { atom } from 'jotai';
+import { atomWithStorage } from 'jotai/utils';
 
 
-export const currentTraceTableAtom = atom<string>('');
+export const currentTraceTableAtom = atomWithStorage<string>('trace-current-table', '');
 export const currentServiceAtom = atom<any>(DEFAULT_SERVICE);
 export const currentOperationAtom = atom<any>(DEFAULT_OPERATION);
 export const currentSortAtom = atom<any>('most-recent');

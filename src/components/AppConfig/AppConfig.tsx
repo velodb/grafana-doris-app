@@ -2,25 +2,22 @@ import React, { ChangeEvent, useState, useEffect } from 'react';
 import { lastValueFrom } from 'rxjs';
 import { css } from '@emotion/css';
 import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps, PluginMeta, toDataFrame } from '@grafana/data';
-import { getBackendSrv, DataSourcePicker } from '@grafana/runtime';
+import { getBackendSrv, DataSourcePicker, getDataSourceSrv } from '@grafana/runtime';
 import { Button, Field, FieldSet, Input, SecretInput, useStyles2, Select } from '@grafana/ui';
 import { useAtom } from 'jotai';
 import { Subscription } from 'rxjs';
 import { getDatabases, getTablesService } from 'services/metaservice';
 import { testIds } from '../testIds';
 import { settingDatabasesAtom, settingTablesAtom } from 'store/discover';
+import {
+  DEFAULT_LOGS_CONFIG,
+  mergeLogsConfig,
+  type AppPluginSettings,
+  type LogsConfig,
+} from 'types/plugin-settings';
 
-type LogsConfig = {
-  datasource?: any;
-  database?: string;
-  logsTable?: string;
-  targetTraceTable?: string;
-}
-
-export type AppPluginSettings = {
-  apiUrl?: string;
-  logsConfig?: LogsConfig
-};
+export type { AppPluginSettings, LogsConfig };
+export { DEFAULT_LOGS_CONFIG, mergeLogsConfig };
 
 type State = {
   // The URL to reach our custom API.
@@ -41,20 +38,32 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
     apiKey: '',
     isApiKeySet: Boolean(secureJsonFields?.apiKey),
   });
-  const logsConfig = jsonData?.logsConfig || {};
+  const logsConfig = mergeLogsConfig(jsonData?.logsConfig);
 
   const [currentLogsConfig, setCurrentLogsConfig] = useState<LogsConfig>(logsConfig);
   const [databases, setDatabases] = useAtom(settingDatabasesAtom);
   const [tables, setTables] = useAtom(settingTablesAtom);
 
   const isSubmitDisabled = Boolean(!state.apiUrl || (!state.isApiKeySet && !state.apiKey));
-
-  const fetchDatabases = React.useCallback((ds: any) => {
+  const resolveDatasource = React.useCallback((ds: any) => {
     if (!ds) {
       return undefined;
     }
+    if (typeof ds === 'string') {
+      return getDataSourceSrv()
+        .getList()
+        .find(item => item.uid === ds || item.name === ds);
+    }
+    return ds;
+  }, []);
 
-    return getDatabases(ds).subscribe({
+  const fetchDatabases = React.useCallback((ds: any) => {
+    const datasourceRef = resolveDatasource(ds);
+    if (!datasourceRef) {
+      return undefined;
+    }
+
+    return getDatabases(datasourceRef).subscribe({
       next: (resp: any) => {
         const { data, ok } = resp;
         if (ok) {
@@ -66,14 +75,18 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
       },
       error: (err: any) => console.log('Fetch Error', err),
     });
-  }, [setDatabases]);
+  }, [setDatabases, resolveDatasource]);
 
   const fetchTables = React.useCallback((db: string) => {
+    const datasourceRef = resolveDatasource(currentLogsConfig.datasource);
     if (!db) {
       return undefined;
     }
+    if (!datasourceRef) {
+      return undefined;
+    }
     return getTablesService({
-      selectdbDS: currentLogsConfig.datasource,
+      selectdbDS: datasourceRef,
       database: db,
     }).subscribe({
       next: (resp: any) => {
@@ -87,7 +100,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
       },
       error: (err: any) => console.log('Fetch Error', err),
     });
-  }, [setTables,currentLogsConfig.datasource])
+  }, [setTables, currentLogsConfig.datasource, resolveDatasource])
 
   const onResetApiKey = () =>
     setState({
@@ -112,6 +125,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
       enabled,
       pinned,
       jsonData: {
+        ...jsonData,
         apiUrl: state.apiUrl,
       },
       // This cannot be queried later by the frontend.
@@ -129,6 +143,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
       enabled,
       pinned,
       jsonData: {
+        ...jsonData,
         apiUrl: state.apiUrl,
         logsConfig: { ...currentLogsConfig }
       },
@@ -141,6 +156,16 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
         }
     });
   }
+
+  useEffect(() => {
+    const datasourceRef = resolveDatasource(currentLogsConfig.datasource);
+    if (datasourceRef && datasourceRef !== currentLogsConfig.datasource) {
+      setCurrentLogsConfig(prev => ({
+        ...prev,
+        datasource: datasourceRef,
+      }));
+    }
+  }, [currentLogsConfig.datasource, resolveDatasource]);
 
   useEffect(() => {
     if (!currentLogsConfig.datasource) {
