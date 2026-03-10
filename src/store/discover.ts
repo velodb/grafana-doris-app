@@ -23,12 +23,12 @@ export const currentDatabaseAtom = selectAtom(discoverCurrentAtom, current => cu
 export const currentTableAtom = atomWithStorage<string>('discover-current-table', '');
 export const currentClusterAtom = atom('');
 export const currentTimeFieldAtom = selectAtom(discoverCurrentAtom, current => current.timeField);
-export const currentDateAtom = atom<Dayjs[]>( DISCOVER_SHORTCUTS[2].range());
+export const currentDateAtom = atom<Dayjs[]>( DISCOVER_SHORTCUTS[3].range());
 export const currentIndexAtom = atom<any>([]);
 export const selectedIndexesAtom = atom<any>([]);
 export const searchValueAtom = atom('');
 export const searchFocusAtom = atom(false);
-export const activeShortcutAtom = atom<ShortcutItem | undefined>(DISCOVER_SHORTCUTS[2]);
+export const activeShortcutAtom = atom<ShortcutItem | undefined>(DISCOVER_SHORTCUTS[3]);
 export const dorisInfoAtom = atom<any>({});
 export const disabledOptionsAtom = atom<string[]>([]);
 
@@ -70,9 +70,9 @@ export const surroundingSelectedFieldsAtom = atom<any[]>([]);
 export const datasourcesAtom = atom<Array<DataSourceInstanceSettings<DataSourceJsonData>>>([]);
 export const selectedDatasourceAtom = atomWithStorage<DataSourceInstanceSettings<DataSourceJsonData> | undefined>('discover-selected-datasource', undefined);
 export const timeRangeAtom = atom<any>({
-    from: DISCOVER_SHORTCUTS[2].range()[0].toDate(),
-    to: DISCOVER_SHORTCUTS[2].range()[1].toDate(),
-    raw: DISCOVER_SHORTCUTS[2].raw,
+    from: DISCOVER_SHORTCUTS[3].range()[0].toDate(),
+    to: DISCOVER_SHORTCUTS[3].range()[1].toDate(),
+    raw: DISCOVER_SHORTCUTS[3].raw,
 });
 
 export const discoverLoadingAtom = atom({
