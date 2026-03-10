@@ -92,7 +92,8 @@ export default function DiscoverHeader(
     }
     const [_loc, setLoc] = useAtom(locationAtom);
     // const [currentCluster, setCurrentCluster] = useAtom(currentClusterAtom);
-    const setTableFields = useSetAtom(tableFieldsAtom);
+    // const setTableFields = useSetAtom(tableFieldsAtom);
+    const [tableFields,setTableFields] = useAtom(tableFieldsAtom);
     const [timeFields, setTimeFields] = useAtom(timeFieldsAtom);
     const [_currentDate, setCurrentDate] = useAtom(currentDateAtom);
     const currentTimeField = useAtomValue(currentTimeFieldAtom);
@@ -173,7 +174,6 @@ export default function DiscoverHeader(
             next: ({ data, ok }: any) => {
                 if (ok) {
                     const frame = toDataFrame(data.results.getFields.frames[0]);
-                    console.log('frame', frame);
                     const values = Array.from(frame.fields[0].values);
                     const fieldTypes = Array.from(frame.fields[1].values);
 
@@ -281,7 +281,7 @@ export default function DiscoverHeader(
         const defaultDatasourceUid = persistedDatasourceUid || configuredDatasourceUid || '';
         const defaultDatabase = persistedDatabase || logsConfig.database || '';
         const defaultLogsTable = persistedTable || logsConfig.logsTable || '';
-
+        
         if (!defaultDatasourceUid || !defaultDatabase) {
             return;
         }
@@ -298,7 +298,6 @@ export default function DiscoverHeader(
                 setSelectedDatasource(ds as any);
             }
             fetchDatabases(ds);
-
             getTablesService({
                 selectdbDS: ds,
                 database: defaultDatabase,
@@ -319,7 +318,7 @@ export default function DiscoverHeader(
                             database: defaultDatabase,
                             table: targetTable,
                         }));
-
+                        
                         if (targetTable) {
                             getFields(
                                 { value: targetTable },
@@ -327,13 +326,6 @@ export default function DiscoverHeader(
                                     datasource: ds,
                                     database: defaultDatabase,
                                     preferredTimeField: persistedTimeField,
-                                    onResolved: hasPersistedSelection
-                                        ? timeField => {
-                                            if (timeField && timeField === persistedTimeField) {
-                                                props?.onQuerying();
-                                            }
-                                        }
-                                        : undefined,
                                 },
                             );
                             getIndexes({ value: targetTable }, { datasource: ds, database: defaultDatabase });
@@ -374,7 +366,6 @@ export default function DiscoverHeader(
                          noDefault
                          filter={ds => ds.type === 'mysql'}
                          onChange={item => {
-                             console.log('item', item);
                              setSelectedDatasource(item);
                              // Always fetch databases even if the same datasource is selected
                              fetchDatabases(item);
@@ -417,8 +408,6 @@ export default function DiscoverHeader(
                         width={15}
                         value={currentTable}
                         onChange={(selectedTable: any) => {
-                            console.log('selectedTable.value',selectedTable.value);
-                            
                             setDiscoverCurrent({
                                 ...discoverCurrent,
                                 table: selectedTable.value,

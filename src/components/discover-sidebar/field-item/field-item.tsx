@@ -1,6 +1,6 @@
 import React from 'react';
 import { getFieldIcon } from 'utils/icon';
-import { IconButton, Toggletip, useTheme2 } from '@grafana/ui';
+import { IconButton, useTheme2, Tooltip } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { cn } from 'utils/tailwind';
 import { TopData } from './top-data/top-data';
@@ -27,7 +27,7 @@ export default function FieldItem(props: FieldItemProps) {
     }
     return (
         <div>
-            <Toggletip placement='right' content={<TopData field={field} />}>
+            <Tooltip placement='right' interactive={true}  content={<TopData field={field} />}>
                 <div
                     className={css`
                         width: 100%;
@@ -98,7 +98,7 @@ export default function FieldItem(props: FieldItemProps) {
                         )}
                     </div>
                 </div>
-            </Toggletip>
+            </Tooltip>
         </div>
     );
 }
