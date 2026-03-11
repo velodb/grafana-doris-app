@@ -29,7 +29,7 @@ import { ContentItem } from './content-item';
 import SurroundingLogs from 'components/surrounding-logs';
 import TraceDetail from 'components/trace-detail';
 import { usePluginContext } from '@grafana/data';
-import type { AppPluginSettings } from 'components/AppConfig/AppConfig';
+import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
 import { formatTimestampToDateTime, isValidTimeFieldType } from 'utils/data';
 
 
@@ -58,10 +58,8 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
     const context = usePluginContext();
     // user settings
     const jsonData = context.meta.jsonData || {};
-    console.log('jsonData', jsonData);
-
-    const { logsConfig = {} } = jsonData as AppPluginSettings;
-    const { database = "", datasource = {}, logsTable = "", targetTraceTable = "" } = logsConfig;
+    const logsConfig = mergeLogsConfig((jsonData as AppPluginSettings).logsConfig);
+    const { database = '', datasource, logsTable = '', targetTraceTable = '' } = logsConfig;
     // local input state for page-jump control
     const [jumpPage, setJumpPage] = useState<string>(String(page));
 
@@ -69,7 +67,19 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
         setJumpPage(String(page));
     }, [page]);
 
-    const isTargetLogTable = discoverCurrent.table === logsTable && discoverCurrent.database === database && currentDatasource?.id === datasource?.id;
+    const configuredDatasourceUid =
+        typeof datasource === 'string'
+            ? datasource
+            : datasource?.uid || datasource?.id;
+    const currentDatasourceIdentity = [
+        currentDatasource?.uid,
+        currentDatasource?.id,
+        currentDatasource?.name,
+    ].filter(Boolean);
+    const isTargetLogTable =
+        discoverCurrent.table === logsTable &&
+        discoverCurrent.database === database &&
+        (!configuredDatasourceUid || currentDatasourceIdentity.includes(configuredDatasourceUid));
 
     useEffect(() => {
         if (theme.isDark) {

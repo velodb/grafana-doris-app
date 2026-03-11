@@ -5,6 +5,8 @@ import { DiscoverHeaderSearch } from './discover-header.style';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { DataSourcePicker, getDataSourceSrv } from '@grafana/runtime';
 import { css } from '@emotion/css';
+import { usePluginContext } from '@grafana/data';
+import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
 import {
     indexesAtom,
     discoverCurrentAtom,
@@ -31,6 +33,45 @@ import { currentTraceTableAtom } from 'store/traces';
 import { toDataFrame } from '@grafana/data';
 import { Subscription } from 'rxjs';
 
+function getStoredValue<T>(key: string): T | undefined {
+    if (typeof window === 'undefined') {
+        return undefined;
+    }
+    try {
+        const raw = window.localStorage.getItem(key);
+        if (!raw) {
+            return undefined;
+        }
+        return JSON.parse(raw) as T;
+    } catch {
+        return undefined;
+    }
+}
+
+function resolveDatasourceUid(dataSource: any): string {
+    if (!dataSource) {
+        return '';
+    }
+    if (typeof dataSource === 'string') {
+        const matched = getDataSourceSrv()
+            .getList()
+            .find(ds => ds.uid === dataSource || ds.name === dataSource);
+        return matched?.uid || dataSource;
+    }
+    if (typeof dataSource === 'object') {
+        if (dataSource.uid) {
+            return dataSource.uid;
+        }
+        if (dataSource.name) {
+            const matched = getDataSourceSrv()
+                .getList()
+                .find(ds => ds.name === dataSource.name);
+            return matched?.uid || '';
+        }
+    }
+    return '';
+}
+
 export default function TracesHeader() {
     // const catalogs = useAtomValue(catalogAtom);
     const setIndexes = useSetAtom(indexesAtom);
@@ -54,6 +95,27 @@ export default function TracesHeader() {
     const setDisabledOptions = useSetAtom(disabledOptionsAtom);
 
     const selectdbDS = useAtomValue(selectedDatasourceAtom);
+    const context = usePluginContext();
+    const jsonData = context.meta.jsonData || {};
+    const logsConfig = mergeLogsConfig((jsonData as AppPluginSettings).logsConfig);
+    const fetchDatabases = React.useCallback((ds: any) => {
+        if (!ds) {
+            return undefined;
+        }
+
+        return getDatabases(ds).subscribe({
+            next: (resp: any) => {
+                const { data, ok } = resp;
+                if (ok) {
+                    const frame = toDataFrame(data.results.getDatabases.frames[0]);
+                    const values = Array.from(frame.fields[0].values);
+                    const options = values.map((item: string) => ({ label: item, value: item }));
+                    setDatabases(options);
+                }
+            },
+            error: (err: any) => console.log('Fetch Error', err),
+        });
+    }, [setDatabases]);
 
     useEffect(() => {
         const datasources = getDataSourceSrv().getList();
@@ -75,26 +137,24 @@ export default function TracesHeader() {
             return;
         }
 
-        const subscription: Subscription = getDatabases(selectdbDS).subscribe({
-            next: (resp: any) => {
-                const { data, ok } = resp;
-                if (ok) {
-                    const frame = toDataFrame(data.results.getDatabases.frames[0]);
-                    const values = Array.from(frame.fields[0].values);
-                    const options = values.map((item: string) => ({ label: item, value: item }));
-                    setDatabases(options);
-                }
-            },
-            error: (err: any) => console.log('Fetch Error', err),
-        });
+        const subscription: Subscription | undefined = fetchDatabases(selectdbDS);
 
-        return () => subscription.unsubscribe();
-    }, [selectdbDS, setDatabases]);
+        return () => subscription?.unsubscribe();
+    }, [selectdbDS, fetchDatabases]);
 
-    function getFields(selectedTable: any) {
+    function getFields(
+        selectedTable: any,
+        initOptions?: { datasource?: any; database?: string; preferredTimeField?: string },
+    ) {
+        const effectiveDatasource = initOptions?.datasource ?? selectdbDS;
+        const effectiveDatabase = initOptions?.database ?? discoverCurrent.database;
+        if (!effectiveDatasource || !effectiveDatabase || !selectedTable?.value) {
+            return;
+        }
+
         getFieldsService({
-            selectdbDS,
-            database: discoverCurrent.database,
+            selectdbDS: effectiveDatasource,
+            database: effectiveDatabase,
             table: selectedTable.value,
         }).subscribe({
             next: ({ data, ok }: any) => {
@@ -126,10 +186,15 @@ export default function TracesHeader() {
                                     value: item,
                                 };
                             });
-                        setDiscoverCurrent({
-                            ...discoverCurrent,
-                            timeField: options[0]?.value || '',
-                        });
+                        const preferredTimeField = initOptions?.preferredTimeField ?? currentTimeField;
+                        const targetTimeField =
+                            options.find((option: any) => option.value === preferredTimeField)?.value || options[0]?.value || '';
+                        setDiscoverCurrent(prev => ({
+                            ...prev,
+                            database: effectiveDatabase,
+                            table: selectedTable.value,
+                            timeField: targetTimeField || prev.timeField,
+                        }));
                         setTimeFields(options);
                     }
                 }
@@ -140,10 +205,16 @@ export default function TracesHeader() {
         });
     }
 
-    function getIndexes(selectedTable: any) {
+    function getIndexes(selectedTable: any, initOptions?: { datasource?: any; database?: string }) {
+        const effectiveDatasource = initOptions?.datasource ?? selectdbDS;
+        const effectiveDatabase = initOptions?.database ?? discoverCurrent.database;
+        if (!effectiveDatasource || !effectiveDatabase || !selectedTable?.value) {
+            return;
+        }
+
         getIndexesService({
-            selectdbDS,
-            database: discoverCurrent.database,
+            selectdbDS: effectiveDatasource,
+            database: effectiveDatabase,
             table: selectedTable.value,
         }).subscribe({
             next: ({ data, ok }: any) => {
@@ -180,6 +251,88 @@ export default function TracesHeader() {
             },
         });
     }
+
+    async function initHeaderData() {
+        const persistedDatasourceStorage = getStoredValue<{ uid?: string }>('discover-selected-datasource');
+        const persistedDiscoverCurrentStorage = getStoredValue<{ database?: string; table?: string; timeField?: string }>('discover-current');
+        const persistedTraceTableStorage = getStoredValue<string>('trace-current-table');
+
+        const configuredDatasourceUid = resolveDatasourceUid(logsConfig.datasource);
+
+        const persistedDatasourceUid = selectedDatasource?.uid || persistedDatasourceStorage?.uid;
+        const persistedDatabase = discoverCurrent.database || persistedDiscoverCurrentStorage?.database || '';
+        const persistedTable = currentTable || persistedTraceTableStorage || '';
+        const persistedTimeField = discoverCurrent.timeField || persistedDiscoverCurrentStorage?.timeField || '';
+
+        const defaultDatasourceUid = persistedDatasourceUid || configuredDatasourceUid || '';
+        const defaultDatabase = persistedDatabase || logsConfig.database || '';
+        const defaultTraceTable = persistedTable || logsConfig.targetTraceTable || logsConfig.logsTable || '';
+
+        if (!defaultDatasourceUid || !defaultDatabase) {
+            return;
+        }
+
+        try {
+            const ds =
+                selectedDatasource?.uid === defaultDatasourceUid
+                    ? selectedDatasource
+                    : await getDataSourceSrv().get({ uid: defaultDatasourceUid });
+
+            if (!ds) {
+                return;
+            }
+            if (selectedDatasource?.uid !== defaultDatasourceUid) {
+                setSelectedDatasource(ds as any);
+            }
+            fetchDatabases(ds);
+
+            getTablesService({
+                selectdbDS: ds,
+                database: defaultDatabase,
+            }).subscribe({
+                next: (resp: any) => {
+                    const { data, ok } = resp;
+                    if (ok) {
+                        const frame = toDataFrame(data.results.getTables.frames[0]);
+                        const values = Array.from(frame.fields[0].values);
+                        const options = values.map((item: string) => ({ label: item, value: item }));
+                        const targetTable =
+                            options.find(option => option.value === defaultTraceTable)?.value || options[0]?.value || '';
+
+                        setTables(options);
+                        setCurrentTable(targetTable);
+                        setDiscoverCurrent(prev => ({
+                            ...prev,
+                            database: defaultDatabase,
+                            table: targetTable,
+                        }));
+
+                        if (targetTable) {
+                            getFields(
+                                { value: targetTable },
+                                {
+                                    datasource: ds,
+                                    database: defaultDatabase,
+                                    preferredTimeField: persistedTimeField,
+                                },
+                            );
+                            getIndexes({ value: targetTable }, { datasource: ds, database: defaultDatabase });
+                        }
+                    }
+                },
+                error: (err: any) => console.log('Fetch Error', err),
+            });
+
+        } catch (error) {
+            console.error('Failed to initialize trace defaults from plugin config', error);
+        }
+    }
+
+    useEffect(() => {
+        void initHeaderData();
+        // Initialize once: keep persisted values if they exist; otherwise apply config defaults.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     return (
         <div

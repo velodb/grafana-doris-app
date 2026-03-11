@@ -5,8 +5,10 @@ import { DiscoverHeaderSearch } from './discover-header.style';
 import SearchType from './search-type';
 import SQLSearch from './sql-search';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { DataSourcePicker } from '@grafana/runtime';
+import { DataSourcePicker, getDataSourceSrv } from '@grafana/runtime';
 import { css } from '@emotion/css';
+import { usePluginContext } from '@grafana/data';
+import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
 import {
     indexesAtom,
     searchTypeAtom,
@@ -35,6 +37,45 @@ import { Subscription } from 'rxjs';
 import { toDataFrame } from '@grafana/data';
 import Lucene from './lucene';
 
+function getStoredValue<T>(key: string): T | undefined {
+    if (typeof window === 'undefined') {
+        return undefined;
+    }
+    try {
+        const raw = window.localStorage.getItem(key);
+        if (!raw) {
+            return undefined;
+        }
+        return JSON.parse(raw) as T;
+    } catch {
+        return undefined;
+    }
+}
+
+function resolveDatasourceUid(dataSource: any): string {
+    if (!dataSource) {
+        return '';
+    }
+    if (typeof dataSource === 'string') {
+        const matched = getDataSourceSrv()
+            .getList()
+            .find(ds => ds.uid === dataSource || ds.name === dataSource);
+        return matched?.uid || dataSource;
+    }
+    if (typeof dataSource === 'object') {
+        if (dataSource.uid) {
+            return dataSource.uid;
+        }
+        if (dataSource.name) {
+            const matched = getDataSourceSrv()
+                .getList()
+                .find(ds => ds.name === dataSource.name);
+            return matched?.uid || '';
+        }
+    }
+    return '';
+}
+
 export default function DiscoverHeader(
     props: PropsWithChildren & {
         onQuerying: () => void;
@@ -51,7 +92,8 @@ export default function DiscoverHeader(
     }
     const [_loc, setLoc] = useAtom(locationAtom);
     // const [currentCluster, setCurrentCluster] = useAtom(currentClusterAtom);
-    const setTableFields = useSetAtom(tableFieldsAtom);
+    // const setTableFields = useSetAtom(tableFieldsAtom);
+    const [tableFields,setTableFields] = useAtom(tableFieldsAtom);
     const [timeFields, setTimeFields] = useAtom(timeFieldsAtom);
     const [_currentDate, setCurrentDate] = useAtom(currentDateAtom);
     const currentTimeField = useAtomValue(currentTimeFieldAtom);
@@ -76,6 +118,9 @@ export default function DiscoverHeader(
 
     const selectdbDS = useAtomValue(selectedDatasourceAtom);
     const theme = useTheme2();
+    const context = usePluginContext();
+    const jsonData = context.meta.jsonData || {};
+    const logsConfig = mergeLogsConfig((jsonData as AppPluginSettings).logsConfig);
 
     const fetchDatabases = React.useCallback((ds: any) => {
         if (!ds) {
@@ -106,16 +151,29 @@ export default function DiscoverHeader(
         return () => subscription?.unsubscribe();
     }, [selectdbDS, fetchDatabases]);
 
-    function getFields(selectedTable: any) {
+    function getFields(
+        selectedTable: any,
+        initOptions?: {
+            datasource?: any;
+            database?: string;
+            preferredTimeField?: string;
+            onResolved?: (timeField: string) => void;
+        },
+    ) {
+        const effectiveDatasource = initOptions?.datasource ?? selectdbDS;
+        const effectiveDatabase = initOptions?.database ?? discoverCurrent.database;
+        if (!effectiveDatasource || !effectiveDatabase || !selectedTable?.value) {
+            return;
+        }
+
         getFieldsService({
-            selectdbDS,
-            database: discoverCurrent.database,
+            selectdbDS: effectiveDatasource,
+            database: effectiveDatabase,
             table: selectedTable.value,
         }).subscribe({
             next: ({ data, ok }: any) => {
                 if (ok) {
                     const frame = toDataFrame(data.results.getFields.frames[0]);
-                    console.log('frame', frame);
                     const values = Array.from(frame.fields[0].values);
                     const fieldTypes = Array.from(frame.fields[1].values);
 
@@ -141,14 +199,18 @@ export default function DiscoverHeader(
                                     value: item,
                                 };
                             });
-                            console.log('bbb,',discoverCurrent);
-                            
-                        setDiscoverCurrent({
-                            ...discoverCurrent,
+
+                        const preferredTimeField = (initOptions?.preferredTimeField ?? currentTimeField ?? '').trim();
+                        const targetTimeField = preferredTimeField || options[0]?.value || '';
+
+                        setDiscoverCurrent(prev => ({
+                            ...prev,
+                            database: effectiveDatabase,
                             table: selectedTable.value,
-                            timeField: options[0]?.value || '',
-                        });
+                            timeField: targetTimeField || prev.timeField,
+                        }));
                         setTimeFields(options);
+                        initOptions?.onResolved?.(targetTimeField);
                     }
                 }
             },
@@ -158,10 +220,16 @@ export default function DiscoverHeader(
         });
     }
 
-    function getIndexes(selectedTable: any) {
+    function getIndexes(selectedTable: any, initOptions?: { datasource?: any; database?: string }) {
+        const effectiveDatasource = initOptions?.datasource ?? selectdbDS;
+        const effectiveDatabase = initOptions?.database ?? discoverCurrent.database;
+        if (!effectiveDatasource || !effectiveDatabase || !selectedTable?.value) {
+            return;
+        }
+
         getIndexesService({
-            selectdbDS,
-            database: discoverCurrent.database,
+            selectdbDS: effectiveDatasource,
+            database: effectiveDatabase,
             table: selectedTable.value,
         }).subscribe({
             next: ({ data, ok }: any) => {
@@ -199,6 +267,84 @@ export default function DiscoverHeader(
         });
     }
 
+    async function initHeaderData() {
+        const persistedDatasourceStorage = getStoredValue<{ uid?: string }>('discover-selected-datasource');
+        const persistedDiscoverCurrentStorage = getStoredValue<{ database?: string; table?: string; timeField?: string }>('discover-current');
+        const persistedTableStorage = getStoredValue<string>('discover-current-table');
+
+        const configuredDatasourceUid = resolveDatasourceUid(logsConfig.datasource);
+        const persistedDatasourceUid = selectedDatasource?.uid || persistedDatasourceStorage?.uid;
+        const persistedDatabase = discoverCurrent.database || persistedDiscoverCurrentStorage?.database || '';
+        const persistedTable = currentTable || persistedTableStorage || discoverCurrent.table || persistedDiscoverCurrentStorage?.table || '';
+        const persistedTimeField = discoverCurrent.timeField || persistedDiscoverCurrentStorage?.timeField || '';
+        const hasPersistedSelection = Boolean(persistedDatasourceUid && persistedDatabase && persistedTable && persistedTimeField);
+        const defaultDatasourceUid = persistedDatasourceUid || configuredDatasourceUid || '';
+        const defaultDatabase = persistedDatabase || logsConfig.database || '';
+        const defaultLogsTable = persistedTable || logsConfig.logsTable || '';
+        
+        if (!defaultDatasourceUid || !defaultDatabase) {
+            return;
+        }
+
+        try {
+            const ds =
+                selectedDatasource?.uid === defaultDatasourceUid
+                    ? selectedDatasource
+                    : await getDataSourceSrv().get({ uid: defaultDatasourceUid });
+            if (!ds) {
+                return;
+            }
+            if (selectedDatasource?.uid !== defaultDatasourceUid) {
+                setSelectedDatasource(ds as any);
+            }
+            fetchDatabases(ds);
+            getTablesService({
+                selectdbDS: ds,
+                database: defaultDatabase,
+            }).subscribe({
+                next: (resp: any) => {
+                    const { data, ok } = resp;
+                    if (ok) {
+                        const frame = toDataFrame(data.results.getTables.frames[0]);
+                        const values = Array.from(frame.fields[0].values);
+                        const options = values.map((item: string) => ({ label: item, value: item }));
+                        const targetTable =
+                            options.find(option => option.value === defaultLogsTable)?.value || options[0]?.value || '';
+
+                        setTables(options);
+                        setCurrentTable(targetTable);
+                        setDiscoverCurrent(prev => ({
+                            ...prev,
+                            database: defaultDatabase,
+                            table: targetTable,
+                        }));
+                        
+                        if (targetTable) {
+                            getFields(
+                                { value: targetTable },
+                                {
+                                    datasource: ds,
+                                    database: defaultDatabase,
+                                    preferredTimeField: persistedTimeField,
+                                },
+                            );
+                            getIndexes({ value: targetTable }, { datasource: ds, database: defaultDatabase });
+                        }
+                    }
+                },
+                error: (err: any) => console.log('Fetch Error', err),
+            });
+        } catch (error) {
+            console.error('Failed to initialize discover defaults from plugin config', error);
+        }
+    }
+
+    useEffect(() => {
+        void initHeaderData();
+        // We only want to apply plugin-config defaults once when the page mounts.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     return (
         <div
             className={css`
@@ -220,7 +366,6 @@ export default function DiscoverHeader(
                          noDefault
                          filter={ds => ds.type === 'mysql'}
                          onChange={item => {
-                             console.log('item', item);
                              setSelectedDatasource(item);
                              // Always fetch databases even if the same datasource is selected
                              fetchDatabases(item);
@@ -263,8 +408,6 @@ export default function DiscoverHeader(
                         width={15}
                         value={currentTable}
                         onChange={(selectedTable: any) => {
-                            console.log('selectedTable.value',selectedTable.value);
-                            
                             setDiscoverCurrent({
                                 ...discoverCurrent,
                                 table: selectedTable.value,

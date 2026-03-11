@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Dayjs } from 'dayjs';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import {
@@ -45,6 +45,8 @@ type RefreshOptions = {
 };
 
 export function useDiscoverData() {
+    const didRunPageEffect = useRef(false);
+    const didRunAutoRefreshEffect = useRef(false);
     const [page, setPage] = useAtom(pageAtom);
     const pageSize = useAtomValue(pageSizeAtom);
     const setTableData = useSetAtom(tableDataAtom);
@@ -537,6 +539,10 @@ export function useDiscoverData() {
     }, [clearData, currentTimeField, refreshData]);
 
     useEffect(() => {
+        if (!didRunPageEffect.current) {
+            didRunPageEffect.current = true;
+            return;
+        }
         if (!currentTimeField) {
             return;
         }
@@ -545,9 +551,13 @@ export function useDiscoverData() {
         void getTableDataCharts();
         void getTableDataCount();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentTimeField, page]);
+    }, [page]);
 
     useEffect(() => {
+        if (!didRunAutoRefreshEffect.current) {
+            didRunAutoRefreshEffect.current = true;
+            return;
+        }
         refreshData({ skipPageReset: false });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentDate, currentTimeField, dataFilter, interval]);
