@@ -2,6 +2,8 @@ import React from 'react';
 import { useAtom } from 'jotai';
 import { searchValueAtom } from 'store/discover';
 import { Input } from '@grafana/ui';
+import { logError } from '@grafana/runtime';
+import { toError } from 'utils/errors';
 
 export default function Lucene({ onQuerying }: { onQuerying?: () => void }) {
     const [searchValue, setSearchValue] = useAtom(searchValueAtom);
@@ -13,7 +15,6 @@ export default function Lucene({ onQuerying }: { onQuerying?: () => void }) {
         <Input
             value={searchValue}
             onChange={(e: any) => {
-                console.log(e);
                 setSearchValue(e.target?.value);
             }}
             onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -22,8 +23,7 @@ export default function Lucene({ onQuerying }: { onQuerying?: () => void }) {
                     try {
                         onQuerying?.();
                     } catch (err) {
-                        // eslint-disable-next-line no-console
-                        console.error('onQuerying handler error:', err);
+                        logError(toError(err), { source: 'Lucene', action: 'onQuerying' });
                     }
                 }
             }}

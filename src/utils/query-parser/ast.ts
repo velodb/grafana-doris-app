@@ -1,8 +1,9 @@
-// @ts-ignore: no type declarations for '@hyperdx/lucene'
-import lucene from '@hyperdx/lucene';
+import * as lucene from '@hyperdx/lucene';
+import { logWarning } from '@grafana/runtime';
 import { decodeSpecialTokens, encodeSpecialTokens } from './tokenUtils';
 import { IMPLICIT_FIELD } from './constants';
 import { EnglishSerializer, Serializer } from './serializers';
+import { toError } from 'utils/errors';
 
 export function parse(query: string): lucene.AST {
     return lucene.parse(encodeSpecialTokens(query));
@@ -67,7 +68,7 @@ async function nodeTerm(node: lucene.Node, serializer: Serializer): Promise<stri
             term = term.slice(0, -1);
         }
 
-        return serializer.fieldSearch(field, term, isNegatedField, prefixWildcard, suffixWildcard, nodeTermInstance.quoted);
+        return serializer.fieldSearch(field, term, isNegatedField, prefixWildcard, suffixWildcard, Boolean(nodeTermInstance.quoted));
     }
 
     if ((node as lucene.NodeRangedTerm).inclusive != null) {
@@ -120,7 +121,8 @@ export async function genEnglishExplanation(query: string): Promise<string> {
             return await serialize(parsedQ, serializer);
         }
     } catch (e) {
-        console.warn('Parse failure', query, e);
+        const error = toError(e);
+        logWarning('Lucene parse failure', { source: 'query-parser', query, error: error.message });
     }
 
     return `Message containing ${query}`;

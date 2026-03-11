@@ -8,7 +8,6 @@ import { isComplexType } from 'utils/data';
 import { css } from '@emotion/css';
 
 export function SurroundingContentTableActions({ fieldName, fieldValue }: any) {
-    console.log(fieldName, fieldValue);
     // const [selectedSurroundingFields, setSelectedSurroundingFields] = useAtom(surroundingSelectedFieldsAtom);
     const [surroundingDataFilter, setSurroundingDataFilter] = useAtom(surroundingDataFilterAtom);
     const tableFields = useAtomValue(tableFieldsAtom);
@@ -29,7 +28,6 @@ export function SurroundingContentTableActions({ fieldName, fieldValue }: any) {
                         <IconButton
                             name="plus-circle"
                             onClick={e => {
-                                console.log(e);
                                 setSurroundingDataFilter([...surroundingDataFilter, { fieldName, operator: '=', value: [fieldValue], id: nanoid() }]);
                                 e.stopPropagation();
                             }}
@@ -39,7 +37,6 @@ export function SurroundingContentTableActions({ fieldName, fieldValue }: any) {
                             name="minus-circle"
                             style={{ marginLeft: '4px' }}
                             onClick={e => {
-                                console.log(e);
                                 setSurroundingDataFilter([
                                     ...surroundingDataFilter,
                                     {

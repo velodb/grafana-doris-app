@@ -21,9 +21,10 @@ import {
     tracesServicesAtom,
 } from 'store/traces';
 import { convertColumnToRow } from 'utils/data';
-import { PluginPage } from '@grafana/runtime';
+import { PluginPage, logError } from '@grafana/runtime';
 import { getOperationListService, getServiceListService, getTracesService } from 'services/traces';
 import { toDataFrame } from '@grafana/data';
+import { toError } from 'utils/errors';
 
 export default function PageTrace() {
     const theme = useTheme2();
@@ -67,11 +68,9 @@ export default function PageTrace() {
         };
 
         if (minDuration) {
-            console.log('minDuration', minDuration);
             payload.minDuration = minDuration;
         }
         if (maxDuration) {
-            console.log('maxDuration', maxDuration);
             payload.maxDuration = maxDuration;
         }
         if (tags && tags.length > 0) {
@@ -86,7 +85,6 @@ export default function PageTrace() {
                 setLoading(false);
                 if (ok) {
                     const rowsData = convertColumnToRow(data.results.getTraces.frames[0]);
-                    // console.log('查询结果', rowsData);
                     const formateData = rowsData.map((item: any) => {
                         return {
                             ...item,
@@ -98,7 +96,7 @@ export default function PageTrace() {
             },
             error: (err: any) => {
                 setLoading(false);
-                console.log('Fetch Error', err);
+                logError(toError(err), { source: 'PageTrace', action: 'getTraces' });
             },
         });
     }, [
@@ -156,7 +154,7 @@ export default function PageTrace() {
             },
             error: (err: any) => {
                 setLoading(false);
-                console.log('Fetch Error', err);
+                logError(toError(err), { source: 'PageTrace', action: 'getTracesServices' });
             },
         });
     }, [currentCatalog, currentDatabase, currentDate, currentTable, currentTimeField, selectdbDS, setTracesServices]);
@@ -200,7 +198,7 @@ export default function PageTrace() {
             },
             error: (err: any) => {
                 setLoading(false);
-                console.log('Fetch Error', err);
+                logError(toError(err), { source: 'PageTrace', action: 'getTracesOperations' });
             },
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps

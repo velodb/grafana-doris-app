@@ -7,7 +7,6 @@ import jsTokens from 'js-tokens';
 import localeData from 'dayjs/plugin/localeData';
 import { DataFrame, FieldType } from '@grafana/data';
 import utc from 'dayjs/plugin/utc';
-import { isIgnorableHighlightToken } from './utils';
 dayjs.extend(utc);
 dayjs.extend(localeData);
 
@@ -586,9 +585,7 @@ export function convertColumnToRow(frame: any): Array<Record<string, any>> {
                 // 如果是 VARIANT 类型，转换为 JSON 对象
                 try {
                     row[fieldNames[j]] = JSON.parse(row[fieldNames[j]]);
-                } catch (e) {
-                    console.error(`Error parsing VARIANT field ${fieldNames[j]}:`, e);
-                }
+                } catch { }
             }
         }
         rows.push(row);
@@ -623,9 +620,7 @@ export function convertColumnToRowViaFieldsType(frame: any, fields: any): Array<
             if (currentFieldInfo && currentFieldInfo.Type.toUpperCase() === 'VARIANT') {
                 try {
                     row[fieldNames[j]] = JSON.parse(row[fieldNames[j]]);
-                } catch (e) {
-                    console.error(`Error parsing VARIANT field ${fieldNames[j]}:`, e);
-                }
+                } catch { }
             }
         }
         rows.push(row);
@@ -669,10 +664,7 @@ export function formatTracesResData(frame: any) {
                 f.values = f.values.map(item => JSON.parse(item));
             }
         });
-    } catch (err) {
-        console.log('err:', err);
-    }
-    console.log('traceDataFrame', traceDataFrame);
+    } catch { }
     return traceDataFrame;
 }
 
@@ -697,11 +689,6 @@ function parseKeywords(keyword: string) {
     return keyword;
 }
 
-function highlightDelimiter(inputStr: string, delimiter: string) {
-    const highlighted = inputStr.replace(new RegExp(`${delimiter}`, 'g'), `<mark>${delimiter}</mark>`);
-    return highlighted;
-}
-
 function insertUnderscore(arr: string[]) {
     return arr.reduce((result: string[], item: string, index) => {
         result.push(item);
@@ -710,14 +697,6 @@ function insertUnderscore(arr: string[]) {
         }
         return result;
     }, []);
-}
-
-function compare_ignore_quotes(s1: string, s2: string) {
-    // 移除双引号和单引号
-    const cleanS1 = s1.replace(/['"]/g, '');
-    const cleanS2 = s2.replace(/['"]/g, '');
-    // 比较
-    return cleanS1 === cleanS2;
 }
 
 type SearchResultItem = { [key: string]: any };
@@ -729,15 +708,6 @@ export function generateHighlightedResults(data: { search_value: string; indexes
     // even when `indexes` (tokenizeFields) is empty. Example: "service_name:frontend"
     const luceneFieldMatch = keyword && keyword.match(/^\s*([^\s:]+)\s*:/);
     const luceneField = luceneFieldMatch ? luceneFieldMatch[1].replace(/['"]+/g, '') : null;
-
-    const keywordsTokens: string[] = flatten(
-        Array.from(jsTokens(keyword))
-            .filter(item => item.type !== 'Punctuator')
-            .map(item => {
-                let res = item.value.toLowerCase();
-                return item.value.includes('_') ? item.value.split('_').map(str => str.toLowerCase()) : res;
-            }),
-    );
 
     const _sourceResult = result.map(item => {
         let itemSource = '';
@@ -820,4 +790,3 @@ export function generateHighlightedResults(data: { search_value: string; indexes
 }
 
 export const QUERY_TRACE_FIELDS = ['trace_id','span_id','parent_span_id','span_name','service_name']
-

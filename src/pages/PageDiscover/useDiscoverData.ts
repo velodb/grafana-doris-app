@@ -38,7 +38,9 @@ import { generateTableDataUID } from 'utils/utils';
 import { message } from 'antd';
 import { FORMAT_DATE, getAutoInterval, IntervalEnum } from '../../constants';
 import { toDataFrame } from '@grafana/data';
+import { logError } from '@grafana/runtime';
 import { useLuceneWhereClause } from './useLuceneWhereClause';
+import { toError } from 'utils/errors';
 
 type RefreshOptions = {
     skipPageReset?: boolean;
@@ -104,7 +106,7 @@ export function useDiscoverData() {
             } catch (error) {
                 setLoading(prev => ({ ...prev, getTableData: false }));
                 setTableData([]);
-                console.error('Lucene query build failed', error);
+                logError(toError(error), { source: 'useDiscoverData', action: 'buildLuceneWhereClause' });
                 return;
             }
         }
@@ -145,7 +147,7 @@ export function useDiscoverData() {
                 setLoading(prev => ({ ...prev, getTableData: false }));
                 // Clear table data on network / connection errors to ensure UI refreshes
                 setTableData([]);
-                console.log('Fetch Error', err);
+                logError(toError(err), { source: 'useDiscoverData', action: 'getTableData' });
             },
         });
     }, [
@@ -205,7 +207,7 @@ export function useDiscoverData() {
             } catch (error) {
                 setLoading(prev => ({ ...prev, getTableDataCharts: false }));
                 setTableDataCharts([]);
-                console.error('Lucene query build failed', error);
+                logError(toError(error), { source: 'useDiscoverData', action: 'buildLuceneWhereClause' });
                 return;
             }
         }
@@ -243,7 +245,7 @@ export function useDiscoverData() {
                 setLoading(prev => ({ ...prev, getTableDataCharts: false }));
                 // Clear charts on network / connection errors
                 setTableDataCharts([]);
-                console.log('Fetch Error', err);
+                logError(toError(err), { source: 'useDiscoverData', action: 'getTableDataCharts' });
             },
         });
     }, [
@@ -299,7 +301,7 @@ export function useDiscoverData() {
                     payload.lucene_where = luceneWhere;
                 }
             } catch (error) {
-                console.error('Lucene query build failed', error);
+                logError(toError(error), { source: 'useDiscoverData', action: 'buildLuceneWhereClause' });
                 setTopData([]);
                 return;
             }
@@ -322,7 +324,7 @@ export function useDiscoverData() {
                 setTopData(rowsData);
             },
             error: (err: any) => {
-                console.log('Fetch Error', err);
+                logError(toError(err), { source: 'useDiscoverData', action: 'getTopData' });
                 setTopData([]);
             },
         });
@@ -378,7 +380,7 @@ export function useDiscoverData() {
                     payload.lucene_where = luceneWhere;
                 }
             } catch (error) {
-                console.error('Lucene query build failed', error);
+                logError(toError(error), { source: 'useDiscoverData', action: 'buildLuceneWhereClause' });
                 setTableTotalCount(0);
                 return;
             }
@@ -410,7 +412,7 @@ export function useDiscoverData() {
             error: (err: any) => {
                 // Ensure we clear the count on error so UI doesn't keep previous value
                 setTableTotalCount(0);
-                console.log('Fetch Error', err);
+                logError(toError(err), { source: 'useDiscoverData', action: 'getTableDataCount' });
             },
         });
     }, [
@@ -425,6 +427,7 @@ export function useDiscoverData() {
         searchType,
         searchValue,
         selectdbDS,
+        setLoading,
         setTableTotalCount,
         tableFields,
     ]);
@@ -473,7 +476,7 @@ export function useDiscoverData() {
                 error: (err: any) => {
                     // Clear trace data on error
                     setTraceData([]);
-                    console.log('Fetch Error', err);
+                    logError(toError(err), { source: 'useDiscoverData', action: 'getTraceData' });
                     callback && callback(err.status)
                     message.error('Failed to request trace');
                     setTraceData(null);

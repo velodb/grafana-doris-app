@@ -5,6 +5,7 @@ apps:
     org_id: 1
     org_name: 'velodb'
     disabled: false
+    pinned: true
     jsonData:
       apiUrl: http://default-url.com
     secureJsonData:

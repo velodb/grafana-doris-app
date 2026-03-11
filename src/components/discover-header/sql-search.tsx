@@ -9,6 +9,8 @@ import {
   // currentTimeFieldAtom,
 } from 'store/discover';
 import { Input } from '@grafana/ui';
+import { logError } from '@grafana/runtime';
+import { toError } from 'utils/errors';
 // import { CodeEditor, CodeEditorSuggestionItem, ReactMonacoEditor } from '@grafana/ui';
 
 
@@ -34,7 +36,6 @@ export default function SQLSearch({ style, onQuerying }: { style?: CSSProperties
     <Input
       value={searchValue}
       onChange={(e: any) => {
-        console.log(e);
         setSearchValue(e.target?.value);
       }}
       onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -46,8 +47,7 @@ export default function SQLSearch({ style, onQuerying }: { style?: CSSProperties
             onQuerying?.();
           } catch (err) {
             // swallow errors from callback to avoid breaking the input
-            // eslint-disable-next-line no-console
-            console.error('onQuerying handler error:', err);
+            logError(toError(err), { source: 'SQLSearch', action: 'onQuerying' });
           }
         }
       }}

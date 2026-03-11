@@ -221,8 +221,6 @@ export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void;
 
     function renderFiledComponent() {
         // const currentField = field.value;
-        // console.log(operator);
-        console.log(operator);
         const currentOperator = (typeof operator === 'string' ? operator : operator?.value) as Operator | undefined;
         if (currentOperator && currentOperator !== 'is null' && currentOperator !== 'is not null' && (currentOperator === 'between' || currentOperator === 'not between')) {
             return (
@@ -240,7 +238,6 @@ export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void;
                 </div>
             );
         }
-        console.log('currentOperator', currentOperator);
         if (
             currentOperator === '=' ||
             currentOperator === '!=' ||

@@ -1,7 +1,8 @@
 import { toDataFrame } from '@grafana/data';
-import { getBackendSrv } from '@grafana/runtime';
+import { getBackendSrv, logError } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import { withErrorHandler } from 'components/with-error-handler/withErrorHandler';
+import { toError } from 'utils/errors';
 
 type GetColumnParams = {
     connectionId: string;
@@ -198,7 +199,7 @@ LIMIT 1;
             normalizedType,
         };
     } catch (error) {
-        console.error('Failed to fetch column metadata', error);
+        logError(toError(error), { source: 'metaservice', action: 'getColumnInfo' });
         return null;
     }
 }
@@ -278,7 +279,7 @@ export async function getInvertedIndexColumns({
 
         return Array.from(indexedColumns);
     } catch (error) {
-        console.error('Failed to fetch inverted index metadata', error);
+        logError(toError(error), { source: 'metaservice', action: 'getInvertedIndexColumns' });
         return [];
     }
 }

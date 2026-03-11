@@ -5,9 +5,9 @@ import { DiscoverHeaderSearch } from './discover-header.style';
 import SearchType from './search-type';
 import SQLSearch from './sql-search';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { DataSourcePicker, getDataSourceSrv } from '@grafana/runtime';
+import { DataSourcePicker, getDataSourceSrv, logError } from '@grafana/runtime';
 import { css } from '@emotion/css';
-import { usePluginContext } from '@grafana/data';
+import { usePluginContext, toDataFrame } from '@grafana/data';
 import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
 import {
     indexesAtom,
@@ -34,8 +34,8 @@ import { Select, Field, Button, useTheme2, TimeRangeInput } from '@grafana/ui';
 import { FORMAT_DATE } from '../../constants';
 import { getDatabases, getFieldsService, getIndexesService, getTablesService } from 'services/metaservice';
 import { Subscription } from 'rxjs';
-import { toDataFrame } from '@grafana/data';
 import Lucene from './lucene';
+import { toError } from 'utils/errors';
 
 function getStoredValue<T>(key: string): T | undefined {
     if (typeof window === 'undefined') {
@@ -93,7 +93,7 @@ export default function DiscoverHeader(
     const [_loc, setLoc] = useAtom(locationAtom);
     // const [currentCluster, setCurrentCluster] = useAtom(currentClusterAtom);
     // const setTableFields = useSetAtom(tableFieldsAtom);
-    const [tableFields,setTableFields] = useAtom(tableFieldsAtom);
+    const setTableFields = useSetAtom(tableFieldsAtom);
     const [timeFields, setTimeFields] = useAtom(timeFieldsAtom);
     const [_currentDate, setCurrentDate] = useAtom(currentDateAtom);
     const currentTimeField = useAtomValue(currentTimeFieldAtom);
@@ -137,7 +137,7 @@ export default function DiscoverHeader(
                     setDatabases(options);
                 }
             },
-            error: (err: any) => console.log('Fetch Error', err),
+            error: (err: any) => logError(toError(err), { source: 'DiscoverHeader', action: 'fetchDatabases' }),
         });
     }, [setDatabases]);
 
@@ -215,7 +215,7 @@ export default function DiscoverHeader(
                 }
             },
             error: (err: any) => {
-                console.log('Fetch Error', err);
+                logError(toError(err), { source: 'DiscoverHeader', action: 'getFields' });
             },
         });
     }
@@ -262,7 +262,7 @@ export default function DiscoverHeader(
                 }
             },
             error: (err: any) => {
-                console.log('Fetch Error', err);
+                logError(toError(err), { source: 'DiscoverHeader', action: 'getIndexes' });
             },
         });
     }
@@ -277,7 +277,6 @@ export default function DiscoverHeader(
         const persistedDatabase = discoverCurrent.database || persistedDiscoverCurrentStorage?.database || '';
         const persistedTable = currentTable || persistedTableStorage || discoverCurrent.table || persistedDiscoverCurrentStorage?.table || '';
         const persistedTimeField = discoverCurrent.timeField || persistedDiscoverCurrentStorage?.timeField || '';
-        const hasPersistedSelection = Boolean(persistedDatasourceUid && persistedDatabase && persistedTable && persistedTimeField);
         const defaultDatasourceUid = persistedDatasourceUid || configuredDatasourceUid || '';
         const defaultDatabase = persistedDatabase || logsConfig.database || '';
         const defaultLogsTable = persistedTable || logsConfig.logsTable || '';
@@ -332,10 +331,10 @@ export default function DiscoverHeader(
                         }
                     }
                 },
-                error: (err: any) => console.log('Fetch Error', err),
+                error: (err: any) => logError(toError(err), { source: 'DiscoverHeader', action: 'getTables' }),
             });
         } catch (error) {
-            console.error('Failed to initialize discover defaults from plugin config', error);
+            logError(toError(error), { source: 'DiscoverHeader', action: 'initHeaderData' });
         }
     }
 
@@ -396,7 +395,7 @@ export default function DiscoverHeader(
                                         setTables(options);
                                     }
                                 },
-                                error: (err: any) => console.log('Fetch Error', err),
+                                error: (err: any) => logError(toError(err), { source: 'DiscoverHeader', action: 'getTables' }),
                             });
                         }}
                     ></Select>

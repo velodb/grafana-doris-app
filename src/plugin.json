@@ -42,6 +42,13 @@
     },
     {
       "type": "page",
+      "name": "Dashboard",
+      "path": "/dashboards",
+      "addToNav": true,
+      "defaultNav": false
+    },
+    {
+      "type": "page",
       "icon": "cog",
       "name": "Configuration",
       "path": "/plugins/%PLUGIN_ID%",

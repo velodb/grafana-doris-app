@@ -329,7 +329,6 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                 <Tooltip title="Surrounding Items will ignore the existing interface's filter conditions and view the context through time.">
                     <a
                         onClick={() => {
-                            console.log('row', row);
                             setSurroundingLogsOpen(true);
                             setSelectedRow(row.original);
                         }}

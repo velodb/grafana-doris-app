@@ -186,4 +186,6 @@ export const TraceView: React.FC<any> = React.memo(({ traces: propTraces, onSort
             <TraceDetail onClose={() => setDrawerOpen(false)} open={drawerOpen} traceId={traceId} />
         </div>
     );
-}) ;
+});
+
+TraceView.displayName = 'TraceView';
