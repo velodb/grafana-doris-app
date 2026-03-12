@@ -8,7 +8,7 @@
     "keywords": [
       "app"
     ],
-    "description": "",
+    "description": "Grafana Doris App provides a seamless interface for the Apache Doris observability storage backend. It delivers a Kibana-like search experience supporting both Lucene and SQL syntax, alongside powerful log-trace correlation. Additionally, it features native trace exploration—reminiscent of Jaeger—allowing users to filter, locate, and visualize traces in intuitive waterfall views.",
     "author": {
       "name": "VeloDB"
     },
