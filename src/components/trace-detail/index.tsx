@@ -1,5 +1,5 @@
 import { LoadingState } from '@grafana/data';
-import { PanelRenderer } from '@grafana/runtime';
+import { PanelRenderer, logError } from '@grafana/runtime';
 import { Drawer, LoadingPlaceholder } from '@grafana/ui';
 import { useAtom, useAtomValue } from 'jotai';
 import React, { useEffect } from 'react';
@@ -7,6 +7,7 @@ import { getTableDataTraceService } from 'services/traces';
 import { currentCatalogAtom, currentDatabaseAtom, tableTracesDataAtom, selectedDatasourceAtom, selectedRowAtom } from 'store/discover';
 import { currentTraceTableAtom } from 'store/traces';
 import { formatTracesResData } from 'utils/data';
+import { toError } from 'utils/errors';
 
 export default function TraceDetail(props: { onClose?: () => void; open: boolean; traceId?: string; traceTable?: string }) {
     const currentTable = useAtomValue(currentTraceTableAtom);
@@ -44,7 +45,7 @@ export default function TraceDetail(props: { onClose?: () => void; open: boolean
             },
             error: (err: any) => {
                 setLoading(false);
-                console.log('Fetch Error', err);
+                logError(toError(err), { source: 'TraceDetail', action: 'getTraceData' });
             },
         });
     }, [currentCatalog, currentDatabase, traceTable, selectdbDS, setTraceData, traceId]);

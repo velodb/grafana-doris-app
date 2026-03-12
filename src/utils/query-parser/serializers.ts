@@ -1,5 +1,4 @@
-// @ts-ignore: no type declarations for '@hyperdx/lucene'
-import lucene from '@hyperdx/lucene';
+import * as lucene from '@hyperdx/lucene';
 import SqlString from './sqlstring-browser';
 import { getColumn as getColumnMetadata, getInvertedIndexColumns } from '../../services/metaservice';
 import { convertCHTypeToPrimitiveJSType, JSDataType } from './enums';
@@ -64,12 +63,10 @@ export class EnglishSerializer implements Serializer {
                 return 'AND NOT';
             case 'OR NOT':
                 return 'OR NOT';
-            // @ts-ignore TODO: Types need to be fixed upstream
             case '&&':
             case '<implicit>':
             case 'AND':
                 return 'AND';
-            // @ts-ignore TODO: Types need to be fixed upstream
             case '||':
             case 'OR':
                 return 'OR';
@@ -158,12 +155,10 @@ export abstract class SQLSerializer implements Serializer {
                 return 'AND NOT';
             case 'OR NOT':
                 return 'OR NOT';
-            // @ts-ignore TODO: Types need to be fixed upstream
             case '&&':
             case '<implicit>':
             case 'AND':
                 return 'AND';
-            // @ts-ignore TODO: Types need to be fixed upstream
             case '||':
             case 'OR':
                 return 'OR';

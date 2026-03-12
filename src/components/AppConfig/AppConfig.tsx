@@ -1,11 +1,10 @@
 import React, { ChangeEvent, useState, useEffect } from 'react';
-import { lastValueFrom } from 'rxjs';
+import { lastValueFrom, Subscription } from 'rxjs';
 import { css } from '@emotion/css';
 import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps, PluginMeta, toDataFrame } from '@grafana/data';
-import { getBackendSrv, DataSourcePicker, getDataSourceSrv } from '@grafana/runtime';
+import { getBackendSrv, DataSourcePicker, getDataSourceSrv, logError } from '@grafana/runtime';
 import { Button, Field, FieldSet, Input, SecretInput, useStyles2, Select } from '@grafana/ui';
 import { useAtom } from 'jotai';
-import { Subscription } from 'rxjs';
 import { getDatabases, getTablesService } from 'services/metaservice';
 import { testIds } from '../testIds';
 import { settingDatabasesAtom, settingTablesAtom } from 'store/discover';
@@ -15,6 +14,7 @@ import {
   type AppPluginSettings,
   type LogsConfig,
 } from 'types/plugin-settings';
+import { toError } from 'utils/errors';
 
 export type { AppPluginSettings, LogsConfig };
 export { DEFAULT_LOGS_CONFIG, mergeLogsConfig };
@@ -73,7 +73,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
           setDatabases(options);
         }
       },
-      error: (err: any) => console.log('Fetch Error', err),
+      error: (err: any) => logError(toError(err), { source: 'AppConfig', action: 'fetchDatabases' }),
     });
   }, [setDatabases, resolveDatasource]);
 
@@ -98,7 +98,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
           setTables(options);
         }
       },
-      error: (err: any) => console.log('Fetch Error', err),
+      error: (err: any) => logError(toError(err), { source: 'AppConfig', action: 'fetchTables' }),
     });
   }, [setTables, currentLogsConfig.datasource, resolveDatasource])
 
@@ -308,7 +308,7 @@ const updatePluginAndReload = async (pluginId: string, data: Partial<PluginMeta<
     // This is not ideal, however unfortunately currently there is no supported way for updating the plugin state.
     window.location.reload();
   } catch (e) {
-    console.error('Error while updating the plugin', e);
+    logError(toError(e), { source: 'AppConfig', action: 'updatePluginAndReload' });
   }
 };
 

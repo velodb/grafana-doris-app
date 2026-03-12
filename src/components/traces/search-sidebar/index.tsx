@@ -77,12 +77,12 @@ export function SearchSidebar(props: {
                             >
                                 Tags
                                 <Tooltip title={<div>
-                                    Filter traces using <a className={css`font-weight:500px;color:#3D71D9;`} href='https://brandur.org/logfmt' target='_blank'>logfmt</a> syntax:
+                                    Filter traces using <a className={css`font-weight:500px;color:#3D71D9;`} href='https://brandur.org/logfmt' target='_blank' rel="noreferrer">logfmt</a> syntax:
                                     <br />
                                     <ul className={css`list-style-type: disc;list-style-position: inside;`}>
                                         <li>Equality: http.status_code=200</li>
                                         <li>Inequality: error!=true</li>
-                                        <li>Contains: message~="timeout"</li>
+                                        <li>Contains: message~=&quot;timeout&quot;</li>
                                         <li>Multiple (AND): method=POST duration&gt;1000</li>
                                         <li>OR conditions: error=true OR status&gt;=500</li>
                                     </ul>
@@ -105,7 +105,6 @@ export function SearchSidebar(props: {
                             className="mt-1"
                             value={tags}
                             onChange={e => {
-                                console.log((e.target as HTMLInputElement)?.value);
                                 const value = trimSpacesAroundEquals((e.target as HTMLInputElement)?.value);
                                 setTags(value);
                             }}

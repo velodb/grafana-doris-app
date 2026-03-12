@@ -25,9 +25,8 @@ describe('Components/AppConfig', () => {
   });
 
   test('renders the "API Settings" fieldset with API key, API url inputs and button', () => {
-    const plugin = { meta: { ...props.plugin.meta, enabled: false } };
+    const plugin = { ...props.plugin, meta: { ...props.plugin.meta, enabled: false } } as AppConfigProps['plugin'];
 
-    // @ts-ignore - We don't need to provide `addConfigPage()` and `setChannelSupport()` for these tests
     render(<AppConfig plugin={plugin} query={props.query} />);
 
     expect(screen.queryByRole('group', { name: /api settings/i })).toBeInTheDocument();

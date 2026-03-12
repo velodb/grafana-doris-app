@@ -1,4 +1,6 @@
 import { CustomSchemaSQLSerializerV2, genWhereSQL, parse } from 'utils/query-parser/query-parser';
+import { logError } from '@grafana/runtime';
+import { toError } from 'utils/errors';
 
 type GetWhereSQLParams = {
     query: string;
@@ -26,13 +28,9 @@ export async function getWhereSQLViaLucene({ query, databaseName, tableName, con
     try {
         const ast = parse(trimmedQuery);
         const whereSQL =  await genWhereSQL(ast, serializer);
-        console.log({
-            query,
-            whereSQL,
-        });
         return whereSQL;
     } catch (error) {
-        console.error('Failed to generate Lucene WHERE SQL', error);
+        logError(toError(error), { source: 'lucene', action: 'getWhereSQLViaLucene' });
         throw error;
     }
 }

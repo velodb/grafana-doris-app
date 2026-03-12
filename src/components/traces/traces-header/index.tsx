@@ -3,9 +3,9 @@ import React, { useEffect } from 'react';
 import dayjs from 'dayjs';
 import { DiscoverHeaderSearch } from './discover-header.style';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { DataSourcePicker, getDataSourceSrv } from '@grafana/runtime';
+import { DataSourcePicker, getDataSourceSrv, logError } from '@grafana/runtime';
 import { css } from '@emotion/css';
-import { usePluginContext } from '@grafana/data';
+import { usePluginContext, toDataFrame } from '@grafana/data';
 import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
 import {
     indexesAtom,
@@ -30,8 +30,8 @@ import { Select, Field, useTheme2, TimeRangeInput } from '@grafana/ui';
 import { FORMAT_DATE } from '../../../constants';
 import { getDatabases, getFieldsService, getIndexesService, getTablesService } from 'services/metaservice';
 import { currentTraceTableAtom } from 'store/traces';
-import { toDataFrame } from '@grafana/data';
 import { Subscription } from 'rxjs';
+import { toError } from 'utils/errors';
 
 function getStoredValue<T>(key: string): T | undefined {
     if (typeof window === 'undefined') {
@@ -113,7 +113,7 @@ export default function TracesHeader() {
                     setDatabases(options);
                 }
             },
-            error: (err: any) => console.log('Fetch Error', err),
+            error: (err: any) => logError(toError(err), { source: 'TracesHeader', action: 'fetchDatabases' }),
         });
     }, [setDatabases]);
 
@@ -160,7 +160,6 @@ export default function TracesHeader() {
             next: ({ data, ok }: any) => {
                 if (ok) {
                     const frame = toDataFrame(data.results.getFields.frames[0]);
-                    console.log('frame', frame);
                     const values = Array.from(frame.fields[0].values);
                     const fieldTypes = Array.from(frame.fields[1].values);
 
@@ -200,7 +199,7 @@ export default function TracesHeader() {
                 }
             },
             error: (err: any) => {
-                console.log('Fetch Error', err);
+                logError(toError(err), { source: 'TracesHeader', action: 'getFields' });
             },
         });
     }
@@ -247,7 +246,7 @@ export default function TracesHeader() {
                 }
             },
             error: (err: any) => {
-                console.log('Fetch Error', err);
+                logError(toError(err), { source: 'TracesHeader', action: 'getIndexes' });
             },
         });
     }
@@ -320,11 +319,11 @@ export default function TracesHeader() {
                         }
                     }
                 },
-                error: (err: any) => console.log('Fetch Error', err),
+                error: (err: any) => logError(toError(err), { source: 'TracesHeader', action: 'getTables' }),
             });
 
         } catch (error) {
-            console.error('Failed to initialize trace defaults from plugin config', error);
+            logError(toError(error), { source: 'TracesHeader', action: 'initHeaderData' });
         }
     }
 
@@ -356,7 +355,6 @@ export default function TracesHeader() {
                         noDefault
                         filter={ds => ds.type === 'mysql'}
                         onChange={item => {
-                            console.log('item', item);
                             setSelectedDatasource(item);
                         }}
                     />
@@ -385,7 +383,7 @@ export default function TracesHeader() {
                                         setTables(options);
                                     }
                                 },
-                                error: (err: any) => console.log('Fetch Error', err),
+                                error: (err: any) => logError(toError(err), { source: 'TracesHeader', action: 'getTables' }),
                             });
                         }}
                     ></Select>

@@ -37,6 +37,8 @@ import { lastValueFrom } from 'rxjs';
 import { convertColumnToRow, formatTimestampToDateTime } from 'utils/data';
 import { generateTableDataUID } from 'utils/utils';
 import { SurroundingContentTableActions } from './content/content-table-actions';
+import { logError } from '@grafana/runtime';
+import { toError } from 'utils/errors';
 
 export default function SurroundingLogs() {
     const theme = useTheme2();
@@ -84,13 +86,11 @@ export default function SurroundingLogs() {
 
     const { loading: getAfterSurroundingDataLoading, run: getAfterSurroundingData } = useRequest(
         ({ pageSize = afterTimeFieldPageSize, time = afterTime }: any) => {
-            console.log(time);
             const params: SurroundingParams = getQueryParams({
                 pageSize: pageSize + 1,
                 operator: '>',
                 time,
             });
-            console.log(params.time);
 
             return lastValueFrom(
                 getSurroundingDataService({
@@ -235,7 +235,7 @@ export default function SurroundingLogs() {
                 }
             },
             onError: err => {
-                console.log(err);
+                logError(toError(err), { source: 'SurroundingLogs', action: 'initSurroundingData' });
             },
         },
     );

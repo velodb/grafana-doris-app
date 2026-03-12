@@ -17,8 +17,7 @@ export function FilterContent(props: FilterContentProps) {
     const indexes = useAtomValue(indexesAtom);
     if (process.env.NODE_ENV !== 'production') {
         // add a debug label for dev to help with jotai debugging
-        // @ts-ignore
-        surroundingDataFilterAtom.debugLabel = 'surroundingDataFilter';
+        (surroundingDataFilterAtom as any).debugLabel = 'surroundingDataFilter';
     }
     const [tableFieldValue, setTableFieldValue] = useAtom(tableFieldValuesAtom);
     const tableData = useAtomValue(tableDataAtom);
@@ -382,4 +381,3 @@ export function FilterContent(props: FilterContentProps) {
         </form>
     );
 }
-

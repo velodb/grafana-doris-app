@@ -1,6 +1,8 @@
 import { Observable, throwError } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
 import { message } from 'antd';
+import { logError } from '@grafana/runtime';
+import { toError } from 'utils/errors';
 
 const GLOBAL_ERROR_KEY = 'global_request_error';
 
@@ -47,7 +49,7 @@ export function withErrorHandler<T>(
         }),
 
         catchError((err: any) => {
-            console.log('error catch', err);
+            logError(toError(err), { source: 'withErrorHandler' });
             showGlobalError(getErrorText(err));
 
             return throwError(() => err);

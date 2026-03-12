@@ -119,7 +119,6 @@ export default function DiscoverFilter() {
                     content={
                         <FilterContent
                             onHide={() => {
-                                console.log('onHide');
                                 setOpen(false);
                             }}
                         />

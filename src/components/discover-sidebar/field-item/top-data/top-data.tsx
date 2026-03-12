@@ -31,7 +31,6 @@ function countValueDistribution(jsonArray: JsonObject[], key: string): { [value:
 }
 
 export function TopData({ field }: any) {
-    console.log(field);
     const topData = useAtomValue(topDataAtom);
     const tableTotalCount = useAtomValue(tableTotalCountAtom);
     const [dataFilter, setDataFilter] = useAtom(dataFilterAtom);
@@ -132,7 +131,6 @@ export function TopData({ field }: any) {
                                             <IconButton
                                                 name="plus-circle"
                                                 onClick={e => {
-                                                    console.log(value);
                                                     setDataFilter([
                                                         ...dataFilter,
                                                         {

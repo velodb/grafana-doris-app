@@ -17,8 +17,6 @@ export default function SurroundingDiscoverFilter(props: DiscoverFilterProps) {
     const { t } = useTranslation();
     const theme = useTheme2();
 
-    console.log('surroundingDataFilter', surroundingDataFilter);
-
     return (
         <DiscoverFilterWrapper
             ref={discoverFilterRef}
@@ -87,7 +85,6 @@ export default function SurroundingDiscoverFilter(props: DiscoverFilterProps) {
                                                     `}
                                                     onClick={() => {
                                                         const data_filters = surroundingDataFilter.filter(e => e !== dataFilterValue) || [];
-                                                        console.log('data_filters', data_filters);
                                                         setSurroundingDataFilter(data_filters);
                                                         // setLoc(prev => {
                                                         //     const searchParams = prev.searchParams;
@@ -119,7 +116,6 @@ export default function SurroundingDiscoverFilter(props: DiscoverFilterProps) {
                     content={
                         <FilterContent
                             onHide={() => {
-                                console.log('onHide');
                                 setOpen(false);
                             }}
                         />

@@ -4,10 +4,8 @@ import { currentIndexAtom, disabledOptionsAtom, indexesAtom, searchTypeAtom, sea
 import { useTheme2, ActionMeta, Icon, MultiSelect, RadioButtonGroup, Toggletip } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { SelectableValue } from '@grafana/data';
-import { useTranslation } from 'react-i18next';
 
 export default function SearchType() {
-    const { t } = useTranslation();
     const [searchType, setSearchType] = useAtom(searchTypeAtom);
     const setSearchValue = useSetAtom(searchValueAtom);
     const disabledOptions = useAtomValue(disabledOptionsAtom);
