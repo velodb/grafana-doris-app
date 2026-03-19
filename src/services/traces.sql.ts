@@ -65,14 +65,23 @@ function parseDuration(input?: string): number {
     return 0;
   }
 
-  if (input.endsWith('ms')) {
-    return parseFloat(input.replace('ms', ''));
-  } else if (input.endsWith('us')) {
-    return parseFloat(input.replace('us', '')) / 1000;
-  } else if (input.endsWith('s')) {
-    return parseFloat(input.replace('s', '')) * 1000;
+  const normalizedInput = input.trim().toLowerCase();
+
+  if (!normalizedInput) {
+    return 0;
   }
-  return 0;
+
+  if (normalizedInput.endsWith('ms')) {
+    return parseFloat(normalizedInput.replace('ms', ''));
+  } else if (normalizedInput.endsWith('us')) {
+    return parseFloat(normalizedInput.replace('us', '')) / 1000;
+  } else if (normalizedInput.endsWith('s')) {
+    return parseFloat(normalizedInput.replace('s', '')) * 1000;
+  }
+
+  // Treat bare numeric input as milliseconds for simpler filtering.
+  const numericDuration = parseFloat(normalizedInput);
+  return Number.isFinite(numericDuration) ? numericDuration : 0;
 }
 
 function tagsToDorisSQLConditions(tags?: string): string {
@@ -106,11 +115,11 @@ export function buildTraceAggSQLFromParams(params: QueryTracesParams): string {
 
   let durationFilter = '1=1';
   if (minDuration > 0 && maxDuration > 0) {
-    durationFilter = `trace_duration BETWEEN ${minDuration} AND ${maxDuration}`;
+    durationFilter = `trace_duration_ms BETWEEN ${minDuration} AND ${maxDuration}`;
   } else if (minDuration > 0) {
-    durationFilter = `trace_duration >= ${minDuration}`;
+    durationFilter = `trace_duration_ms >= ${minDuration}`;
   } else if (maxDuration > 0) {
-    durationFilter = `trace_duration <= ${maxDuration}`;
+    durationFilter = `trace_duration_ms <= ${maxDuration}`;
   }
 
   const tagsFilter = tagsToDorisSQLConditions(params.tags);
@@ -152,7 +161,7 @@ WITH
   trace_durations AS (
     SELECT
       trace_id,
-      (UNIX_TIMESTAMP(MAX(end_time)) - UNIX_TIMESTAMP(MIN(timestamp))) * 1000 AS trace_duration
+      MAX(UNIX_TIMESTAMP(timestamp) * 1000 + duration / 1000) - MIN(UNIX_TIMESTAMP(timestamp) * 1000) AS trace_duration_ms
     FROM ${params.table}
     WHERE ${timeFilter}
     GROUP BY trace_id
@@ -161,7 +170,7 @@ WITH
     SELECT
       t.trace_id,
       MIN(t.${params.timeField}) AS time,
-      d.trace_duration
+      d.trace_duration_ms
     FROM ${params.table} t
     JOIN trace_durations d ON t.trace_id = d.trace_id
     WHERE
@@ -172,7 +181,7 @@ WITH
       AND ${tagsFilter}
       AND 1=1
       AND ${durationFilter}
-    GROUP BY t.trace_id, d.trace_duration
+    GROUP BY t.trace_id, d.trace_duration_ms
   ),
   root_spans AS (
     SELECT trace_id, span_name AS operation, service_name AS root_service
