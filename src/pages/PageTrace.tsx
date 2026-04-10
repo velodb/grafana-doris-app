@@ -23,8 +23,16 @@ import {
 import { convertColumnToRow } from 'utils/data';
 import { PluginPage, logError } from '@grafana/runtime';
 import { getOperationListService, getServiceListService, getTracesService } from 'services/traces';
-import { toDataFrame } from '@grafana/data';
+import { toDataFrame, usePluginContext } from '@grafana/data';
 import { toError } from 'utils/errors';
+import { message } from 'antd';
+import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
+
+const TRACE_TABLE_MISMATCH_ERROR_KEY = 'trace_table_mismatch_error';
+
+function getErrorText(error: any) {
+    return error?.data?.results?.[Object.keys(error?.data?.results || {})?.[0]]?.error || error?.statusText || 'Request failed';
+}
 
 export default function PageTrace() {
     const theme = useTheme2();
@@ -46,6 +54,38 @@ export default function PageTrace() {
     const minDuration = useAtomValue(minDurationAtom);
     const maxDuration = useAtomValue(maxDurationAtom);
     const sort = useAtomValue(currentSortAtom);
+    const context = usePluginContext();
+    const jsonData = context.meta.jsonData || {};
+    const rawLogsConfig = (jsonData as AppPluginSettings).logsConfig;
+    const logsConfig = mergeLogsConfig(rawLogsConfig);
+    const configuredTraceTable = logsConfig.targetTraceTable || '';
+    const hasExplicitTraceTableConfig = Boolean(rawLogsConfig?.targetTraceTable);
+
+    const showTraceQueryError = React.useCallback((err: any) => {
+        if (!hasExplicitTraceTableConfig) {
+            message.error({
+                content: 'Trace table is not configured. Please configure a trace table in the app settings, or switch to a trace table before querying.',
+                key: TRACE_TABLE_MISMATCH_ERROR_KEY,
+                duration: 4,
+            });
+            return;
+        }
+
+        if (currentTable && configuredTraceTable && currentTable !== configuredTraceTable) {
+            message.error({
+                content: `The current table "${currentTable}" is not the configured trace table "${configuredTraceTable}". Please switch to the configured trace table and try again.`,
+                key: TRACE_TABLE_MISMATCH_ERROR_KEY,
+                duration: 4,
+            });
+            return;
+        }
+
+        message.error({
+            content: getErrorText(err),
+            key: TRACE_TABLE_MISMATCH_ERROR_KEY,
+            duration: 3,
+        });
+    }, [configuredTraceTable, currentTable, hasExplicitTraceTableConfig]);
 
     const getTraces = React.useCallback(() => {
         if (!currentTable || !currentDatabase || !selectdbDS) {
@@ -80,6 +120,8 @@ export default function PageTrace() {
         getTracesService({
             selectdbDS,
             ...payload,
+        }, {
+            showBackendError: false,
         }).subscribe({
             next: ({ data, ok }: any) => {
                 setLoading(false);
@@ -97,6 +139,7 @@ export default function PageTrace() {
             error: (err: any) => {
                 setLoading(false);
                 logError(toError(err), { source: 'PageTrace', action: 'getTraces' });
+                showTraceQueryError(err);
             },
         });
     }, [
@@ -115,6 +158,7 @@ export default function PageTrace() {
         tags,
         selectdbDS,
         setTraces,
+        showTraceQueryError,
     ]);
 
     const getTracesServices = React.useCallback(() => {
@@ -134,6 +178,8 @@ export default function PageTrace() {
         getServiceListService({
             selectdbDS,
             ...payload,
+        }, {
+            showBackendError: false,
         }).subscribe({
             next: ({ data, ok }: any) => {
                 setLoading(false);
@@ -155,9 +201,10 @@ export default function PageTrace() {
             error: (err: any) => {
                 setLoading(false);
                 logError(toError(err), { source: 'PageTrace', action: 'getTracesServices' });
+                showTraceQueryError(err);
             },
         });
-    }, [currentCatalog, currentDatabase, currentDate, currentTable, currentTimeField, selectdbDS, setTracesServices]);
+    }, [currentCatalog, currentDatabase, currentDate, currentTable, currentTimeField, selectdbDS, setTracesServices, showTraceQueryError]);
 
     const getTracesOperations = React.useCallback(() => {
         let payload: any = {
@@ -174,6 +221,8 @@ export default function PageTrace() {
         getOperationListService({
             selectdbDS,
             ...payload,
+        }, {
+            showBackendError: false,
         }).subscribe({
             next: ({ data, ok }: any) => {
                 setLoading(false);
@@ -199,10 +248,11 @@ export default function PageTrace() {
             error: (err: any) => {
                 setLoading(false);
                 logError(toError(err), { source: 'PageTrace', action: 'getTracesOperations' });
+                showTraceQueryError(err);
             },
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentCatalog, currentDatabase, currentDate, currentService, currentTable, currentTimeField, selectdbDS, setTraceOperations]);
+    }, [currentCatalog, currentDatabase, currentDate, currentService, currentTable, currentTimeField, selectdbDS, setTraceOperations, showTraceQueryError]);
 
     useEffect(() => {
         if (currentTimeField && currentTable && currentCatalog && currentDatabase && currentDate) {

@@ -50,7 +50,9 @@ export function withErrorHandler<T>(
 
         catchError((err: any) => {
             logError(toError(err), { source: 'withErrorHandler' });
-            showGlobalError(getErrorText(err));
+            if (showBackendError) {
+                showGlobalError(getErrorText(err));
+            }
 
             return throwError(() => err);
         })
