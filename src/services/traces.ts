@@ -2,8 +2,13 @@ import { getBackendSrv } from "@grafana/runtime";
 import { buildTraceAggSQLFromParams, getOperationListSQL, getQueryTableTraceSQL, getServiceListSQL } from "./traces.sql";
 import { withErrorHandler } from "components/with-error-handler/withErrorHandler";
 
+type TraceServiceOptions = {
+    showBackendError?: boolean;
+    defaultMessage?: string;
+};
+
 // 获取table的Trace数据
-export function getTableDataTraceService(payload: any) {
+export function getTableDataTraceService(payload: any, options?: TraceServiceOptions) {
     const { selectdbDS, ...rest } = payload;
     const traceSQL = getQueryTableTraceSQL(rest);
     return withErrorHandler(getBackendSrv().fetch({
@@ -23,11 +28,11 @@ export function getTableDataTraceService(payload: any) {
             ],
         },
         credentials: 'include',
-    }));
+    }), options);
 }
 
 // 查询Traces
-export function getTracesService(payload: any) {
+export function getTracesService(payload: any, options?: TraceServiceOptions) {
     const { selectdbDS, ...rest } = payload;
     const getTracesSQL = buildTraceAggSQLFromParams(rest);
     return withErrorHandler(getBackendSrv().fetch({
@@ -47,11 +52,11 @@ export function getTracesService(payload: any) {
             ],
         },
         credentials: 'include',
-    }));
+    }), options);
 }
 
 // 查询Trace Services
-export function getServiceListService(payload: any) {
+export function getServiceListService(payload: any, options?: TraceServiceOptions) {
     const { selectdbDS, ...rest } = payload;
     const serviceListSQL = getServiceListSQL(rest);
     return withErrorHandler(getBackendSrv().fetch({
@@ -71,11 +76,11 @@ export function getServiceListService(payload: any) {
             ],
         },
         credentials: 'include',
-    }));
+    }), options);
 }
 
 // 查询Trace Operations
-export function getOperationListService(payload: any) {
+export function getOperationListService(payload: any, options?: TraceServiceOptions) {
     const { selectdbDS, ...rest } = payload;
     const operationListSQL = getOperationListSQL(rest);
     return withErrorHandler(getBackendSrv().fetch({
@@ -95,8 +100,7 @@ export function getOperationListService(payload: any) {
             ],
         },
         credentials: 'include',
-    }));
+    }), options);
 }
-
 
 
