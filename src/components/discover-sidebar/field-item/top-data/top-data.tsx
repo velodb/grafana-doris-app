@@ -10,14 +10,28 @@ import { isComplexType } from 'utils/data';
 interface JsonObject {
     [key: string]: any;
 }
+
+function normalizeTopDataValue(value: any): string {
+    if (value === undefined || value === null) {
+        return '';
+    }
+
+    if (typeof value === 'object') {
+        try {
+            return JSON.stringify(value);
+        } catch {
+            return String(value);
+        }
+    }
+
+    return String(value);
+}
+
 function countValueDistribution(jsonArray: JsonObject[], key: string): { [value: string]: number } {
     const valueCountMap = new Map<string, number>();
 
     jsonArray.forEach(obj => {
-        let value = get(obj, key);
-        if (value === undefined) {
-            value = '';
-        }
+        const value = normalizeTopDataValue(get(obj, key));
         valueCountMap.set(value, (valueCountMap.get(value) || 0) + 1);
     });
 
@@ -34,8 +48,7 @@ export function TopData({ field }: any) {
     const topData = useAtomValue(topDataAtom);
     const tableTotalCount = useAtomValue(tableTotalCountAtom);
     const [dataFilter, setDataFilter] = useAtom(dataFilterAtom);
-    const canDisplayTopData = field?.Type?.toUpperCase() !== 'VARIANT';
-    const res = Object.entries(countValueDistribution(topData, field.Field)).sort((a: any, b: any) => b[1].count - a[1].count);
+    const res = Object.entries(countValueDistribution(topData, field.Field)).sort((a: any, b: any) => b[1] - a[1]);
 
     return (
         <div
@@ -66,110 +79,106 @@ export function TopData({ field }: any) {
                 </div>
                 <small className="text-n2">{tableTotalCount >= 500 ? 500 : tableTotalCount} Items</small>
             </div>
-            {canDisplayTopData ? (
-                <div className="mt-3 space-y-3 text-n5">
-                    {res.map(
-                        ([value, count], index) =>
-                            index < 5 && (
-                                <div key={index} className="flex items-center justify-between">
+            <div className="mt-3 space-y-3 text-n5">
+                {res.map(
+                    ([value, count], index) =>
+                        index < 5 && (
+                            <div key={index} className="flex items-center justify-between">
+                                <div
+                                    className={css`
+                                        overflow: hidden;
+                                        text-overflow: ellipsis;
+                                        white-space: nowrap;
+                                    `}
+                                >
                                     <div
                                         className={css`
-                                            overflow: hidden;
-                                            text-overflow: ellipsis;
-                                            white-space: nowrap;
+                                            display: flex;
+                                            align-items: center;
+                                            width: 180px;
+                                            justify-content: space-between;
                                         `}
                                     >
                                         <div
                                             className={css`
-                                                display: flex;
-                                                align-items: center;
-                                                width: 180px;
-                                                justify-content: space-between;
+                                                flex: 1 1 0%;
+                                                overflow: hidden;
+                                                text-overflow: ellipsis;
+                                                white-space: nowrap;
                                             `}
                                         >
-                                            <div
-                                                className={css`
-                                                    flex: 1 1 0%;
-                                                    overflow: hidden;
-                                                    text-overflow: ellipsis;
-                                                    white-space: nowrap;
-                                                `}
-                                            >
-                                                {value}
-                                            </div>
-                                            <div
-                                                className={css`
-                                                    margin-left: 20px;
-                                                    flex-shrink: 0;
-                                                `}
-                                            >
-                                                {+((count * 100) / topData.length).toFixed(1)}%
-                                            </div>
+                                            {value}
                                         </div>
-                                        <Progress
-                                            size={4}
-                                            className={css`
-                                                .ant-progress-outer {
-                                                    .ant-progress-inner {
-                                                        position: absolute;
-                                                        top: 0px;
-                                                    }
-                                                }
-                                            `}
-                                            style={{ width: '100%', height: '0px' }}
-                                            percent={+((count * 100) / topData.length).toFixed(1)}
-                                            status="normal"
-                                            showInfo={false}
-                                        />
-                                    </div>
-                                    {!isComplexType(field.Type) && (
                                         <div
                                             className={css`
-                                                margin-left: 30px;
+                                                margin-left: 20px;
+                                                flex-shrink: 0;
                                             `}
                                         >
-                                            <IconButton
-                                                name="plus-circle"
-                                                onClick={e => {
-                                                    setDataFilter([
-                                                        ...dataFilter,
-                                                        {
-                                                            fieldName: field.Field,
-                                                            operator: '=',
-                                                            value: [typeof value === 'string' ? value : +value],
-                                                            id: nanoid(),
-                                                        },
-                                                    ]);
-                                                    e.stopPropagation();
-                                                }}
-                                                tooltip="Equivalent filtration"
-                                            />
-                                            <IconButton
-                                                name="minus-circle"
-                                                style={{ marginLeft: '4px' }}
-                                                tooltip="Nonequivalent filtration"
-                                                onClick={e => {
-                                                    setDataFilter([
-                                                        ...dataFilter,
-                                                        {
-                                                            fieldName: field.Field,
-                                                            operator: '!=',
-                                                            value: [typeof value ? value : +value],
-                                                            id: nanoid(),
-                                                        },
-                                                    ]);
-                                                    e.stopPropagation();
-                                                }}
-                                            />
+                                            {+((count * 100) / topData.length).toFixed(1)}%
                                         </div>
-                                    )}
+                                    </div>
+                                    <Progress
+                                        size={4}
+                                        className={css`
+                                            .ant-progress-outer {
+                                                .ant-progress-inner {
+                                                    position: absolute;
+                                                    top: 0px;
+                                                }
+                                            }
+                                        `}
+                                        style={{ width: '100%', height: '0px' }}
+                                        percent={+((count * 100) / topData.length).toFixed(1)}
+                                        status="normal"
+                                        showInfo={false}
+                                    />
                                 </div>
-                            ),
-                    )}
-                </div>
-            ) : (
-                <div className="mt-2 text-xs text-n5">Does not supported</div>
-            )}
+                                {!isComplexType(field.Type) && (
+                                    <div
+                                        className={css`
+                                            margin-left: 30px;
+                                        `}
+                                    >
+                                        <IconButton
+                                            name="plus-circle"
+                                            onClick={e => {
+                                                setDataFilter([
+                                                    ...dataFilter,
+                                                    {
+                                                        fieldName: field.Field,
+                                                        operator: '=',
+                                                        value: [typeof value === 'string' ? value : +value],
+                                                        id: nanoid(),
+                                                    },
+                                                ]);
+                                                e.stopPropagation();
+                                            }}
+                                            tooltip="Equivalent filtration"
+                                        />
+                                        <IconButton
+                                            name="minus-circle"
+                                            style={{ marginLeft: '4px' }}
+                                            tooltip="Nonequivalent filtration"
+                                            onClick={e => {
+                                                setDataFilter([
+                                                    ...dataFilter,
+                                                    {
+                                                        fieldName: field.Field,
+                                                        operator: '!=',
+                                                        value: [typeof value ? value : +value],
+                                                        id: nanoid(),
+                                                    },
+                                                ]);
+                                                e.stopPropagation();
+                                            }}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        ),
+                )}
+            </div>
         </div>
     );
 }
