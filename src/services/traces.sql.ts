@@ -6,7 +6,6 @@ interface QueryTraceDetailParams {
   trace_id: string;
 }
 
-// 查询某个Table的Trace详情
 export function getQueryTableTraceSQL(params: QueryTraceDetailParams): string {
   const { table, trace_id, database } = params;
 
@@ -44,9 +43,9 @@ export function getQueryTableTraceSQL(params: QueryTraceDetailParams): string {
           ']'
         ) AS tags,
         span_kind AS kind,
-        CASE status_code
-          WHEN 'STATUS_CODE_OK' THEN 1
-          WHEN 'STATUS_CODE_ERROR' THEN 2
+        CASE
+          WHEN status_code IN ('STATUS_CODE_ERROR', 'ERROR') THEN 2
+          WHEN status_code IN ('STATUS_CODE_OK', 'OK') THEN 1
           ELSE 0
         END AS statusCode,
         status_message AS statusMessage,
