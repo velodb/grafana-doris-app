@@ -7,7 +7,7 @@ import SQLSearch from './sql-search';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { DataSourcePicker, getDataSourceSrv, logError } from '@grafana/runtime';
 import { css } from '@emotion/css';
-import { usePluginContext, toDataFrame } from '@grafana/data';
+import { dateTime, rangeUtil, usePluginContext, toDataFrame } from '@grafana/data';
 import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
 import {
     indexesAtom,
@@ -24,12 +24,13 @@ import {
     activeShortcutAtom,
     datasourcesAtom,
     selectedDatasourceAtom,
+    searchValueAtom,
     timeRangeAtom,
     databasesAtom,
     tablesAtom,
     currentTableAtom,
 } from 'store/discover';
-import { getLatestTime, isValidTimeFieldType } from 'utils/data';
+import { DISCOVER_SHORTCUTS, getLatestTime, isValidTimeFieldType } from 'utils/data';
 import { Select, Field, Button, useTheme2, TimeRangeInput } from '@grafana/ui';
 import { FORMAT_DATE } from '../../constants';
 import { getDatabases, getFieldsService, getIndexesService, getTablesService } from 'services/metaservice';
@@ -76,6 +77,97 @@ function resolveDatasourceUid(dataSource: any): string {
     return '';
 }
 
+function normalizeMode(mode?: string | null): 'SQL' | 'Search' | 'Lucene' | undefined {
+    if (!mode) {
+        return undefined;
+    }
+
+    const normalizedMode = mode.trim().toLowerCase();
+    if (normalizedMode === 'sql') {
+        return 'SQL';
+    }
+    if (normalizedMode === 'search') {
+        return 'Search';
+    }
+    if (normalizedMode === 'lucene') {
+        return 'Lucene';
+    }
+
+    return undefined;
+}
+
+function resolveDatasourceFromParam(datasourceParam?: string | null) {
+    if (!datasourceParam) {
+        return undefined;
+    }
+
+    const normalizedDatasource = datasourceParam.trim();
+    if (!normalizedDatasource) {
+        return undefined;
+    }
+
+    return getDataSourceSrv()
+        .getList()
+        .find(ds => ds.uid === normalizedDatasource || ds.name === normalizedDatasource);
+}
+
+function parseUrlDate(value?: string | null) {
+    if (!value) {
+        return undefined;
+    }
+
+    const parsedDate = dayjs(value);
+    return parsedDate.isValid() ? parsedDate : undefined;
+}
+
+function normalizeRawTimeValue(value: unknown): string | undefined {
+    if (typeof value !== 'string') {
+        return undefined;
+    }
+
+    const normalizedValue = value.trim();
+    return normalizedValue || undefined;
+}
+
+function isRelativeRawRange(raw?: { from?: unknown; to?: unknown }) {
+    const from = normalizeRawTimeValue(raw?.from);
+    const to = normalizeRawTimeValue(raw?.to);
+
+    return Boolean(from?.startsWith('now') && to?.startsWith('now'));
+}
+
+function buildAbsoluteTimeRange(start: dayjs.Dayjs, end: dayjs.Dayjs) {
+    return {
+        from: dateTime(start.toDate()),
+        to: dateTime(end.toDate()),
+        raw: {
+            from: dateTime(start.toDate()),
+            to: dateTime(end.toDate()),
+        },
+    };
+}
+
+function findShortcutByRaw(rawFrom?: string, rawTo?: string) {
+    if (!rawFrom || !rawTo) {
+        return undefined;
+    }
+
+    return DISCOVER_SHORTCUTS.find(shortcut => shortcut.raw.from === rawFrom && shortcut.raw.to === rawTo);
+}
+
+function buildRelativeTimeRange(rawFrom: string, rawTo: string) {
+    const relativeRange = rangeUtil.convertRawToRange({ from: rawFrom, to: rawTo });
+
+    return {
+        from: relativeRange.from,
+        to: relativeRange.to,
+        raw: {
+            from: rawFrom,
+            to: rawTo,
+        },
+    };
+}
+
 export default function DiscoverHeader(
     props: PropsWithChildren & {
         onQuerying: () => void;
@@ -85,12 +177,12 @@ export default function DiscoverHeader(
     // const catalog = 'internal';
     // const catalogs = useAtomValue(catalogAtom);
     const setIndexes = useSetAtom(indexesAtom);
-    // const setSearchType = useSetAtom(searchTypeAtom);
+    const [searchType, setSearchType] = useAtom(searchTypeAtom);
     const [discoverCurrent, setDiscoverCurrent] = useAtom(discoverCurrentAtom);
     if (process.env.NODE_ENV !== 'production') {
         discoverCurrentAtom.debugLabel = 'current';
     }
-    const [_loc, setLoc] = useAtom(locationAtom);
+    const [loc, setLoc] = useAtom(locationAtom);
     // const [currentCluster, setCurrentCluster] = useAtom(currentClusterAtom);
     // const setTableFields = useSetAtom(tableFieldsAtom);
     const setTableFields = useSetAtom(tableFieldsAtom);
@@ -100,7 +192,7 @@ export default function DiscoverHeader(
     const [, setCurrentIndex] = useAtom(currentIndexAtom);
     const searchFocus = useAtomValue(searchFocusAtom);
     // const { databaseList } = useDatabaseList();
-    const [activeItem, _setActiveItem] = useAtom(activeShortcutAtom);
+    const [activeItem, setActiveItem] = useAtom(activeShortcutAtom);
     // const [clusters, setClusters] = useState<any[]>([]);
     // const database = loc.searchParams?.get('database');
     // const table = loc.searchParams?.get('table');
@@ -113,7 +205,7 @@ export default function DiscoverHeader(
     const [databases, setDatabases] = useAtom(databasesAtom);
     const [tables, setTables] = useAtom(tablesAtom);
     const [_datasources] = useAtom(datasourcesAtom);
-    const searchType = useAtomValue(searchTypeAtom);
+    const [searchValue, setSearchValue] = useAtom(searchValueAtom);
     const searchMode = searchType === 'Search';
 
     const selectdbDS = useAtomValue(selectedDatasourceAtom);
@@ -121,6 +213,47 @@ export default function DiscoverHeader(
     const context = usePluginContext();
     const jsonData = context.meta.jsonData || {};
     const logsConfig = mergeLogsConfig((jsonData as AppPluginSettings).logsConfig);
+    const hasInitializedUrlSyncRef = React.useRef(false);
+    const locSearch = loc?.searchParams?.toString() ?? '';
+
+    const applyAbsoluteTimeRange = React.useCallback(
+        (start: dayjs.Dayjs, end: dayjs.Dayjs) => {
+            setCurrentDate([start, end]);
+            setTimeRange((prev: any) => ({
+                ...prev,
+                ...buildAbsoluteTimeRange(start, end),
+            }));
+        },
+        [setCurrentDate, setTimeRange],
+    );
+
+    const updateShareParams = React.useCallback(
+        (updates: Record<string, string | undefined>) => {
+            setLoc((prev: any) => {
+                const currentSearch = prev?.searchParams?.toString() ?? '';
+                const searchParams = new URLSearchParams(currentSearch);
+
+                Object.entries(updates).forEach(([key, value]) => {
+                    const normalizedValue = value?.trim();
+                    if (normalizedValue) {
+                        searchParams.set(key, normalizedValue);
+                    } else {
+                        searchParams.delete(key);
+                    }
+                });
+
+                if (searchParams.toString() === currentSearch) {
+                    return prev;
+                }
+
+                return {
+                    ...prev,
+                    searchParams,
+                };
+            });
+        },
+        [setLoc],
+    );
 
     const fetchDatabases = React.useCallback((ds: any) => {
         if (!ds) {
@@ -268,24 +401,75 @@ export default function DiscoverHeader(
     }
 
     async function initHeaderData() {
+        const urlSearchParams = new URLSearchParams(locSearch);
         const persistedDatasourceStorage = getStoredValue<{ uid?: string }>('discover-selected-datasource');
         const persistedDiscoverCurrentStorage = getStoredValue<{ database?: string; table?: string; timeField?: string }>('discover-current');
         const persistedTableStorage = getStoredValue<string>('discover-current-table');
+        const urlDatasource = resolveDatasourceFromParam(urlSearchParams.get('datasource'));
+        const urlDatabase = urlSearchParams.get('database')?.trim() || '';
+        const urlTable = urlSearchParams.get('table')?.trim() || '';
+        const urlMode = normalizeMode(urlSearchParams.get('mode'));
+        const urlSearchValue = urlSearchParams.get('query') ?? urlSearchParams.get('searchValue') ?? '';
+        const urlTimeField = urlSearchParams.get('timeField')?.trim() || '';
+        const urlStartTime = parseUrlDate(urlSearchParams.get('startTime'));
+        const urlEndTime = parseUrlDate(urlSearchParams.get('endTime'));
+        const urlTimeRawFrom = urlSearchParams.get('timeRawFrom')?.trim() || '';
+        const urlTimeRawTo = urlSearchParams.get('timeRawTo')?.trim() || '';
+        const matchedShortcut = findShortcutByRaw(urlTimeRawFrom, urlTimeRawTo);
 
         const configuredDatasourceUid = resolveDatasourceUid(logsConfig.datasource);
-        const persistedDatasourceUid = selectedDatasource?.uid || persistedDatasourceStorage?.uid;
-        const persistedDatabase = discoverCurrent.database || persistedDiscoverCurrentStorage?.database || '';
-        const persistedTable = currentTable || persistedTableStorage || discoverCurrent.table || persistedDiscoverCurrentStorage?.table || '';
-        const persistedTimeField = discoverCurrent.timeField || persistedDiscoverCurrentStorage?.timeField || '';
+        const persistedDatasourceUid = urlDatasource?.uid || selectedDatasource?.uid || persistedDatasourceStorage?.uid;
+        const persistedDatabase = urlDatabase || discoverCurrent.database || persistedDiscoverCurrentStorage?.database || '';
+        const persistedTable = urlTable || currentTable || persistedTableStorage || discoverCurrent.table || persistedDiscoverCurrentStorage?.table || '';
+        const persistedTimeField = urlTimeField || discoverCurrent.timeField || persistedDiscoverCurrentStorage?.timeField || '';
         const defaultDatasourceUid = persistedDatasourceUid || configuredDatasourceUid || '';
         const defaultDatabase = persistedDatabase || logsConfig.database || '';
         const defaultLogsTable = persistedTable || logsConfig.logsTable || '';
-        
+        const hasRelativeTimeParams = Boolean(urlTimeRawFrom && urlTimeRawTo);
+        const hasAbsoluteTimeParams = Boolean(urlStartTime && urlEndTime);
+
+        if (hasRelativeTimeParams && urlTimeRawFrom && urlTimeRawTo) {
+            const relativeTimeRange = buildRelativeTimeRange(urlTimeRawFrom, urlTimeRawTo);
+            setActiveItem(matchedShortcut);
+            setCurrentDate([dayjs(relativeTimeRange.from.toDate()), dayjs(relativeTimeRange.to.toDate())]);
+            setTimeRange((prev: any) => ({
+                ...prev,
+                ...relativeTimeRange,
+            }));
+        } else if (hasRelativeTimeParams) {
+            setActiveItem(undefined);
+        } else if (hasAbsoluteTimeParams && urlStartTime && urlEndTime) {
+            setActiveItem(undefined);
+            applyAbsoluteTimeRange(urlStartTime, urlEndTime);
+        }
+
         if (!defaultDatasourceUid || !defaultDatabase) {
+            if (urlMode) {
+                setSearchType(urlMode);
+            }
+            if (urlTimeField) {
+                setDiscoverCurrent(prev => ({
+                    ...prev,
+                    timeField: urlTimeField,
+                }));
+            }
+            setSearchValue(urlSearchValue);
+            hasInitializedUrlSyncRef.current = true;
             return;
         }
 
         try {
+            if (urlMode) {
+                setSearchType(urlMode);
+            }
+            if (urlTimeField) {
+                setDiscoverCurrent(prev => ({
+                    ...prev,
+                    timeField: urlTimeField,
+                }));
+            }
+            setSearchValue(urlSearchValue);
+
             const ds =
                 selectedDatasource?.uid === defaultDatasourceUid
                     ? selectedDatasource
@@ -335,6 +519,8 @@ export default function DiscoverHeader(
             });
         } catch (error) {
             logError(toError(error), { source: 'DiscoverHeader', action: 'initHeaderData' });
+        } finally {
+            hasInitializedUrlSyncRef.current = true;
         }
     }
 
@@ -343,6 +529,49 @@ export default function DiscoverHeader(
         // We only want to apply plugin-config defaults once when the page mounts.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+        if (!hasInitializedUrlSyncRef.current) {
+            return;
+        }
+
+        const urlSearchParams = new URLSearchParams(locSearch);
+        const urlTimeRawFrom = urlSearchParams.get('timeRawFrom')?.trim() || '';
+        const urlTimeRawTo = urlSearchParams.get('timeRawTo')?.trim() || '';
+        const urlStartTime = parseUrlDate(urlSearchParams.get('startTime'));
+        const urlEndTime = parseUrlDate(urlSearchParams.get('endTime'));
+        const rawFrom = normalizeRawTimeValue(timeRange?.raw?.from);
+        const rawTo = normalizeRawTimeValue(timeRange?.raw?.to);
+        const shouldShareRelativeRaw = isRelativeRawRange(timeRange?.raw);
+        const currentStartTime = _currentDate[0]?.format(FORMAT_DATE);
+        const currentEndTime = _currentDate[1]?.format(FORMAT_DATE);
+
+        const hasRelativeTimeParams = Boolean(urlTimeRawFrom && urlTimeRawTo);
+        const hasAbsoluteTimeParams = Boolean(urlStartTime && urlEndTime);
+        const isRelativeTimeSynced = hasRelativeTimeParams && rawFrom === urlTimeRawFrom && rawTo === urlTimeRawTo;
+        const isAbsoluteTimeSynced =
+            hasAbsoluteTimeParams &&
+            !shouldShareRelativeRaw &&
+            currentStartTime === urlStartTime?.format(FORMAT_DATE) &&
+            currentEndTime === urlEndTime?.format(FORMAT_DATE);
+
+        if ((hasRelativeTimeParams || hasAbsoluteTimeParams) && !isRelativeTimeSynced && !isAbsoluteTimeSynced) {
+            return;
+        }
+
+        updateShareParams({
+            datasource: selectedDatasource?.uid || selectedDatasource?.name || '',
+            database: discoverCurrent.database,
+            table: currentTable || discoverCurrent.table,
+            mode: searchType,
+            query: searchValue,
+            timeField: currentTimeField,
+            startTime: shouldShareRelativeRaw ? undefined : currentStartTime,
+            endTime: shouldShareRelativeRaw ? undefined : currentEndTime,
+            timeRawFrom: shouldShareRelativeRaw ? rawFrom : undefined,
+            timeRawTo: shouldShareRelativeRaw ? rawTo : undefined,
+        });
+    }, [currentTable, currentTimeField, _currentDate, discoverCurrent.database, discoverCurrent.table, locSearch, searchType, searchValue, selectedDatasource, timeRange?.raw, updateShareParams]);
 
     return (
         <div
@@ -447,7 +676,7 @@ export default function DiscoverHeader(
                                     timeField: selectdbTimeFiled.value,
                                 });
                                 setLoc((prev: any) => {
-                                    const searchParams = prev.searchParams;
+                                    const searchParams = new URLSearchParams(prev?.searchParams?.toString() ?? '');
                                     searchParams?.set('timeField', selectdbTimeFiled.value);
                                     return {
                                         ...prev,
@@ -464,17 +693,36 @@ export default function DiscoverHeader(
                             onChange={timeRange => {
                                 const start = dayjs(timeRange.from.toDate());
                                 const end = dayjs(timeRange.to.toDate());
+                                setActiveItem(undefined);
+                                const rawFrom = normalizeRawTimeValue(timeRange.raw?.from);
+                                const rawTo = normalizeRawTimeValue(timeRange.raw?.to);
+                                const hasRelativeRaw = isRelativeRawRange(timeRange.raw);
+
                                 setLoc(prev => {
-                                    const searchParams = prev.searchParams;
-                                    searchParams?.set('startTime', start.format(FORMAT_DATE));
-                                    searchParams?.set('endTime', end.format(FORMAT_DATE));
+                                    const searchParams = new URLSearchParams(prev?.searchParams?.toString() ?? '');
+                                    if (hasRelativeRaw && rawFrom && rawTo) {
+                                        searchParams?.delete('startTime');
+                                        searchParams?.delete('endTime');
+                                        searchParams?.set('timeRawFrom', rawFrom);
+                                        searchParams?.set('timeRawTo', rawTo);
+                                    } else {
+                                        searchParams?.set('startTime', start.format(FORMAT_DATE));
+                                        searchParams?.set('endTime', end.format(FORMAT_DATE));
+                                        searchParams?.delete('timeRawFrom');
+                                        searchParams?.delete('timeRawTo');
+                                    }
                                     return {
                                         ...prev,
                                         searchParams,
                                     };
                                 });
+
                                 setCurrentDate([start, end]);
-                                setTimeRange(timeRange);
+                                setTimeRange({
+                                    from: dateTime(timeRange.from.toDate()),
+                                    to: dateTime(timeRange.to.toDate()),
+                                    raw: hasRelativeRaw && rawFrom && rawTo ? { from: rawFrom, to: rawTo } : { from: dateTime(timeRange.from.toDate()), to: dateTime(timeRange.to.toDate()) },
+                                });
                             }}
                             value={timeRange}
                         />
@@ -487,15 +735,32 @@ export default function DiscoverHeader(
                         const latestTime = getLatestTime(activeItem?.key as string);
                         if (latestTime) {
                             const [latestStartTime, latestEndTime] = latestTime;
+                            const currentShortcut = DISCOVER_SHORTCUTS.find(shortcut => shortcut.key === activeItem?.key);
+                            const rawFrom = normalizeRawTimeValue(currentShortcut?.raw?.from);
+                            const rawTo = normalizeRawTimeValue(currentShortcut?.raw?.to);
                             setLoc(prev => {
-                                const searchParams = prev.searchParams;
-                                searchParams?.set('startTime', dayjs(latestStartTime).format(FORMAT_DATE));
-                                searchParams?.set('endTime', dayjs(latestEndTime).format(FORMAT_DATE));
+                                const searchParams = new URLSearchParams(prev?.searchParams?.toString() ?? '');
+                                searchParams?.delete('startTime');
+                                searchParams?.delete('endTime');
+                                if (rawFrom && rawTo) {
+                                    searchParams?.set('timeRawFrom', rawFrom);
+                                    searchParams?.set('timeRawTo', rawTo);
+                                } else {
+                                    searchParams?.delete('timeRawFrom');
+                                    searchParams?.delete('timeRawTo');
+                                }
                                 return {
                                     ...prev,
                                     searchParams,
                                 };
                             });
+                            setCurrentDate([dayjs(latestStartTime), dayjs(latestEndTime)]);
+                            setTimeRange((prev: any) => ({
+                                ...prev,
+                                from: dateTime(dayjs(latestStartTime).toDate()),
+                                to: dateTime(dayjs(latestEndTime).toDate()),
+                                raw: rawFrom && rawTo ? { from: rawFrom, to: rawTo } : buildAbsoluteTimeRange(dayjs(latestStartTime), dayjs(latestEndTime)).raw,
+                            }));
                         }
                         props?.onQuerying();
                     }}
