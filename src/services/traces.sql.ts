@@ -7,58 +7,39 @@ interface QueryTraceDetailParams {
 }
 
 export function getQueryTableTraceSQL(params: QueryTraceDetailParams): string {
-  const { table, trace_id, database } = params;
+    const { table, trace_id, database } = params;
 
-  const sql = `
+    const sql = `
       SELECT
-        trace_id AS traceID,
-        span_id AS spanID,
-        parent_span_id AS parentSpanID,
-        span_name AS operationName,
-        service_name AS serviceName,
-        CONCAT(
-          '[',
-          array_join(
-            array_map(
-              (x, y) -> json_object('key', x, 'value', y),
-              map_keys(CAST(CAST(resource_attributes AS TEXT) AS MAP<STRING, STRING>)),
-              map_values(CAST(CAST(resource_attributes AS TEXT) AS MAP<STRING, STRING>))
-            ),
-            ','
-          ),
-          ']'
-        ) AS serviceTags,
-        UNIX_TIMESTAMP(timestamp) * 1000 AS startTime,
-        duration / 1000 AS duration,
-        CONCAT(
-          '[',
-          array_join(
-            array_map(
-              (x, y) -> json_object('key', x, 'value', y),
-              map_keys(CAST(CAST(span_attributes AS TEXT) AS MAP<STRING, STRING>)),
-              map_values(CAST(CAST(span_attributes AS TEXT) AS MAP<STRING, STRING>))
-            ),
-            ','
-          ),
-          ']'
-        ) AS tags,
-        span_kind AS kind,
-        CASE
-          WHEN status_code IN ('STATUS_CODE_ERROR', 'ERROR') THEN 2
-          WHEN status_code IN ('STATUS_CODE_OK', 'OK') THEN 1
-          ELSE 0
-        END AS statusCode,
-        status_message AS statusMessage,
-        scope_name AS instrumentationLibraryName,
-        scope_version AS instrumentationLibraryVersion,
-        trace_state AS traceState
-      FROM ${database}.\`${table}\`
-      WHERE trace_id = '${trace_id}';
+      trace_id AS traceID,
+      span_id AS spanID,
+      parent_span_id AS parentSpanID,
+      span_name AS operationName,
+      service_name AS serviceName,
+
+      CAST(resource_attributes AS TEXT) AS serviceTags,
+
+      UNIX_TIMESTAMP(timestamp) * 1000 AS startTime,
+      duration / 1000 AS duration,
+
+      CAST(span_attributes AS TEXT) AS tags,
+
+      span_kind AS kind,
+      CASE
+        WHEN status_code IN ('STATUS_CODE_ERROR', 'ERROR') THEN 2
+        WHEN status_code IN ('STATUS_CODE_OK', 'OK') THEN 1
+        ELSE 0
+      END AS statusCode,
+      status_message AS statusMessage,
+      scope_name AS instrumentationLibraryName,
+      scope_version AS instrumentationLibraryVersion,
+      trace_state AS traceState
+    FROM ${database}.\`${table}\`
+    WHERE trace_id = '${trace_id}';
     `;
 
-  return sql;
+    return sql;
 }
-
 function parseDuration(input?: string): number {
   if (!input) {
     return 0;

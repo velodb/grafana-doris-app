@@ -658,10 +658,27 @@ export function formatTracesResData(frame: any) {
         length: data.values[0].length,
     };
     try {
+        const normalizeTraceTags = (item: any) => {
+            const parsed = typeof item === 'string' ? JSON.parse(item) : item;
+
+            if (Array.isArray(parsed)) {
+                return parsed;
+            }
+
+            if (parsed && typeof parsed === 'object') {
+                return Object.entries(parsed).map(([key, value]) => ({
+                    key,
+                    value,
+                }));
+            }
+
+            return [];
+        };
+
         traceDataFrame.fields.forEach(f => {
             if (f.name === 'serviceTags' || f.name === 'tags') {
                 f.type = FieldType.other;
-                f.values = f.values.map(item => JSON.parse(item));
+                f.values = f.values.map(item => normalizeTraceTags(item));
             }
         });
     } catch { }
