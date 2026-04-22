@@ -5,7 +5,7 @@ import { DiscoverHeaderSearch } from './discover-header.style';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { DataSourcePicker, getDataSourceSrv, logError } from '@grafana/runtime';
 import { css } from '@emotion/css';
-import { usePluginContext, toDataFrame } from '@grafana/data';
+import { dateTime, rangeUtil, usePluginContext, toDataFrame } from '@grafana/data';
 import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
 import {
     indexesAtom,
@@ -72,6 +72,70 @@ function resolveDatasourceUid(dataSource: any): string {
     return '';
 }
 
+function resolveDatasourceFromParam(datasourceParam?: string | null) {
+    if (!datasourceParam) {
+        return undefined;
+    }
+
+    const normalizedDatasource = datasourceParam.trim();
+    if (!normalizedDatasource) {
+        return undefined;
+    }
+
+    return getDataSourceSrv()
+        .getList()
+        .find(ds => ds.uid === normalizedDatasource || ds.name === normalizedDatasource);
+}
+
+function parseUrlDate(value?: string | null) {
+    if (!value) {
+        return undefined;
+    }
+
+    const parsedDate = dayjs(value);
+    return parsedDate.isValid() ? parsedDate : undefined;
+}
+
+function buildAbsoluteTimeRange(start: dayjs.Dayjs, end: dayjs.Dayjs) {
+    return {
+        from: dateTime(start.toDate()),
+        to: dateTime(end.toDate()),
+        raw: {
+            from: dateTime(start.toDate()),
+            to: dateTime(end.toDate()),
+        },
+    };
+}
+
+function buildRelativeTimeRange(rawFrom: string, rawTo: string) {
+    const relativeRange = rangeUtil.convertRawToRange({ from: rawFrom, to: rawTo });
+
+    return {
+        from: relativeRange.from,
+        to: relativeRange.to,
+        raw: {
+            from: rawFrom,
+            to: rawTo,
+        },
+    };
+}
+
+function normalizeRawTimeValue(value: unknown): string | undefined {
+    if (typeof value !== 'string') {
+        return undefined;
+    }
+
+    const normalizedValue = value.trim();
+    return normalizedValue || undefined;
+}
+
+function isRelativeRawRange(raw?: { from?: unknown; to?: unknown }) {
+    const from = normalizeRawTimeValue(raw?.from);
+    const to = normalizeRawTimeValue(raw?.to);
+
+    return Boolean(from?.startsWith('now') && to?.startsWith('now'));
+}
+
 export default function TracesHeader() {
     // const catalogs = useAtomValue(catalogAtom);
     const setIndexes = useSetAtom(indexesAtom);
@@ -79,7 +143,7 @@ export default function TracesHeader() {
     if (process.env.NODE_ENV !== 'production') {
         discoverCurrentAtom.debugLabel = 'current';
     }
-    const setLoc = useSetAtom(locationAtom);
+    const [loc, setLoc] = useAtom(locationAtom);
     const setTableFields = useSetAtom(tableFieldsAtom);
     const [timeFields, setTimeFields] = useAtom(timeFieldsAtom);
     const [_currentDate, setCurrentDate] = useAtom(currentDateAtom);
@@ -98,6 +162,37 @@ export default function TracesHeader() {
     const context = usePluginContext();
     const jsonData = context.meta.jsonData || {};
     const logsConfig = mergeLogsConfig((jsonData as AppPluginSettings).logsConfig);
+    const hasInitializedUrlSyncRef = React.useRef(false);
+    const locSearch = loc?.searchParams?.toString() ?? '';
+
+    const updateShareParams = React.useCallback(
+        (updates: Record<string, string | undefined>) => {
+            setLoc((prev: any) => {
+                const currentSearch = prev?.searchParams?.toString() ?? '';
+                const searchParams = new URLSearchParams(currentSearch);
+
+                Object.entries(updates).forEach(([key, value]) => {
+                    const normalizedValue = value?.trim();
+                    if (normalizedValue) {
+                        searchParams.set(key, normalizedValue);
+                    } else {
+                        searchParams.delete(key);
+                    }
+                });
+
+                if (searchParams.toString() === currentSearch) {
+                    return prev;
+                }
+
+                return {
+                    ...prev,
+                    searchParams,
+                };
+            });
+        },
+        [setLoc],
+    );
+
     const fetchDatabases = React.useCallback((ds: any) => {
         if (!ds) {
             return undefined;
@@ -252,22 +347,49 @@ export default function TracesHeader() {
     }
 
     async function initHeaderData() {
+        const urlSearchParams =
+            loc?.searchParams instanceof URLSearchParams
+                ? loc.searchParams
+                : new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
         const persistedDatasourceStorage = getStoredValue<{ uid?: string }>('discover-selected-datasource');
         const persistedDiscoverCurrentStorage = getStoredValue<{ database?: string; table?: string; timeField?: string }>('discover-current');
         const persistedTraceTableStorage = getStoredValue<string>('trace-current-table');
+        const urlDatasource = resolveDatasourceFromParam(urlSearchParams.get('datasource'));
+        const urlDatabase = urlSearchParams.get('database')?.trim() || '';
+        const urlTable = urlSearchParams.get('table')?.trim() || '';
+        const urlTimeField = urlSearchParams.get('timeField')?.trim() || '';
+        const urlStartTime = parseUrlDate(urlSearchParams.get('startTime'));
+        const urlEndTime = parseUrlDate(urlSearchParams.get('endTime'));
+        const urlTimeRawFrom = urlSearchParams.get('timeRawFrom')?.trim() || '';
+        const urlTimeRawTo = urlSearchParams.get('timeRawTo')?.trim() || '';
 
         const configuredDatasourceUid = resolveDatasourceUid(logsConfig.datasource);
-
-        const persistedDatasourceUid = selectedDatasource?.uid || persistedDatasourceStorage?.uid;
-        const persistedDatabase = discoverCurrent.database || persistedDiscoverCurrentStorage?.database || '';
-        const persistedTable = currentTable || persistedTraceTableStorage || '';
-        const persistedTimeField = discoverCurrent.timeField || persistedDiscoverCurrentStorage?.timeField || '';
+        const persistedDatasourceUid = urlDatasource?.uid || selectedDatasource?.uid || persistedDatasourceStorage?.uid;
+        const persistedDatabase = urlDatabase || discoverCurrent.database || persistedDiscoverCurrentStorage?.database || '';
+        const persistedTable = urlTable || currentTable || persistedTraceTableStorage || '';
+        const persistedTimeField = urlTimeField || discoverCurrent.timeField || persistedDiscoverCurrentStorage?.timeField || '';
 
         const defaultDatasourceUid = persistedDatasourceUid || configuredDatasourceUid || '';
         const defaultDatabase = persistedDatabase || logsConfig.database || '';
         const defaultTraceTable = persistedTable || logsConfig.targetTraceTable || logsConfig.logsTable || '';
 
+        if (urlTimeRawFrom && urlTimeRawTo) {
+            const relativeTimeRange = buildRelativeTimeRange(urlTimeRawFrom, urlTimeRawTo);
+            setCurrentDate([dayjs(relativeTimeRange.from.toDate()), dayjs(relativeTimeRange.to.toDate())]);
+            setTimeRange((prev: any) => ({
+                ...prev,
+                ...relativeTimeRange,
+            }));
+        } else if (urlStartTime && urlEndTime) {
+            setCurrentDate([urlStartTime, urlEndTime]);
+            setTimeRange((prev: any) => ({
+                ...prev,
+                ...buildAbsoluteTimeRange(urlStartTime, urlEndTime),
+            }));
+        }
+
         if (!defaultDatasourceUid || !defaultDatabase) {
+            hasInitializedUrlSyncRef.current = true;
             return;
         }
 
@@ -324,6 +446,8 @@ export default function TracesHeader() {
 
         } catch (error) {
             logError(toError(error), { source: 'TracesHeader', action: 'initHeaderData' });
+        } finally {
+            hasInitializedUrlSyncRef.current = true;
         }
     }
 
@@ -332,6 +456,47 @@ export default function TracesHeader() {
         // Initialize once: keep persisted values if they exist; otherwise apply config defaults.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+        if (!hasInitializedUrlSyncRef.current) {
+            return;
+        }
+
+        const urlSearchParams = new URLSearchParams(locSearch);
+        const urlTimeRawFrom = urlSearchParams.get('timeRawFrom')?.trim() || '';
+        const urlTimeRawTo = urlSearchParams.get('timeRawTo')?.trim() || '';
+        const urlStartTime = parseUrlDate(urlSearchParams.get('startTime'));
+        const urlEndTime = parseUrlDate(urlSearchParams.get('endTime'));
+        const rawFrom = normalizeRawTimeValue(timeRange?.raw?.from);
+        const rawTo = normalizeRawTimeValue(timeRange?.raw?.to);
+        const shouldShareRelativeRaw = isRelativeRawRange(timeRange?.raw);
+        const currentStartTime = _currentDate[0]?.format(FORMAT_DATE);
+        const currentEndTime = _currentDate[1]?.format(FORMAT_DATE);
+
+        const hasRelativeTimeParams = Boolean(urlTimeRawFrom && urlTimeRawTo);
+        const hasAbsoluteTimeParams = Boolean(urlStartTime && urlEndTime);
+        const isRelativeTimeSynced = hasRelativeTimeParams && rawFrom === urlTimeRawFrom && rawTo === urlTimeRawTo;
+        const isAbsoluteTimeSynced =
+            hasAbsoluteTimeParams &&
+            !shouldShareRelativeRaw &&
+            currentStartTime === urlStartTime?.format(FORMAT_DATE) &&
+            currentEndTime === urlEndTime?.format(FORMAT_DATE);
+
+        if ((hasRelativeTimeParams || hasAbsoluteTimeParams) && !isRelativeTimeSynced && !isAbsoluteTimeSynced) {
+            return;
+        }
+
+        updateShareParams({
+            datasource: selectedDatasource?.uid || selectedDatasource?.name || '',
+            database: discoverCurrent.database,
+            table: currentTable || discoverCurrent.table,
+            timeField: currentTimeField,
+            startTime: shouldShareRelativeRaw ? undefined : currentStartTime,
+            endTime: shouldShareRelativeRaw ? undefined : currentEndTime,
+            timeRawFrom: shouldShareRelativeRaw ? rawFrom : undefined,
+            timeRawTo: shouldShareRelativeRaw ? rawTo : undefined,
+        });
+    }, [currentTable, currentTimeField, _currentDate, discoverCurrent.database, discoverCurrent.table, locSearch, selectedDatasource, timeRange?.raw, updateShareParams]);
 
     return (
         <div
@@ -356,6 +521,9 @@ export default function TracesHeader() {
                         filter={ds => ds.type === 'mysql'}
                         onChange={item => {
                             setSelectedDatasource(item);
+                            updateShareParams({
+                                datasource: item?.uid || item?.name || '',
+                            });
                         }}
                     />
                 </Field>
@@ -368,6 +536,9 @@ export default function TracesHeader() {
                         onChange={(selectedDatabase: any) => {
                             setDiscoverCurrent({
                                 ...discoverCurrent,
+                                database: selectedDatabase.value,
+                            });
+                            updateShareParams({
                                 database: selectedDatabase.value,
                             });
                             getTablesService({
@@ -400,6 +571,9 @@ export default function TracesHeader() {
                                 table: selectedTable.value,
                             });
                             setCurrentTable(selectedTable.value);
+                            updateShareParams({
+                                table: selectedTable.value,
+                            });
                             getFields(selectedTable);
                             getIndexes(selectedTable);
                         }}
@@ -417,13 +591,8 @@ export default function TracesHeader() {
                                     ...discoverCurrent,
                                     timeField: selectdbTimeFiled.value,
                                 });
-                                setLoc((prev: any) => {
-                                    const searchParams = prev.searchParams;
-                                    searchParams?.set('timeField', selectdbTimeFiled.value);
-                                    return {
-                                        ...prev,
-                                        searchParams,
-                                    };
+                                updateShareParams({
+                                    timeField: selectdbTimeFiled.value,
                                 });
                             }}
                             placeholder={'Time Field'}
@@ -435,17 +604,21 @@ export default function TracesHeader() {
                             onChange={timeRange => {
                                 const start = dayjs(timeRange.from.toDate());
                                 const end = dayjs(timeRange.to.toDate());
-                                setLoc(prev => {
-                                    const searchParams = prev.searchParams;
-                                    searchParams?.set('startTime', start.format(FORMAT_DATE));
-                                    searchParams?.set('endTime', end.format(FORMAT_DATE));
-                                    return {
-                                        ...prev,
-                                        searchParams,
-                                    };
-                                });
+                                const rawFrom = normalizeRawTimeValue(timeRange.raw?.from);
+                                const rawTo = normalizeRawTimeValue(timeRange.raw?.to);
+                                const hasRelativeRaw = isRelativeRawRange(timeRange.raw);
                                 setCurrentDate([start, end]);
-                                setTimeRange(timeRange);
+                                setTimeRange({
+                                    from: dateTime(timeRange.from.toDate()),
+                                    to: dateTime(timeRange.to.toDate()),
+                                    raw: hasRelativeRaw && rawFrom && rawTo ? { from: rawFrom, to: rawTo } : { from: dateTime(timeRange.from.toDate()), to: dateTime(timeRange.to.toDate()) },
+                                });
+                                updateShareParams({
+                                    startTime: hasRelativeRaw ? undefined : start.format(FORMAT_DATE),
+                                    endTime: hasRelativeRaw ? undefined : end.format(FORMAT_DATE),
+                                    timeRawFrom: hasRelativeRaw ? rawFrom : undefined,
+                                    timeRawTo: hasRelativeRaw ? rawTo : undefined,
+                                });
                             }}
                             value={timeRange}
                         />
