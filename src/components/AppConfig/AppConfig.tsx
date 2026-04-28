@@ -383,7 +383,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
           </Field>
           <div className={s.marginTop}>
             <Button type='submit'>
-              Save Logs settings
+              Save plugin settings
             </Button>
           </div>
         </FieldSet>
