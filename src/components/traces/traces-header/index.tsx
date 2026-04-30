@@ -32,6 +32,7 @@ import { getDatabases, getFieldsService, getIndexesService, getTablesService } f
 import { currentTraceTableAtom } from 'store/traces';
 import { Subscription } from 'rxjs';
 import { toError } from 'utils/errors';
+import { useDatasourcePermissions } from 'hooks/useDatasourcePermissions';
 
 function getStoredValue<T>(key: string): T | undefined {
     if (typeof window === 'undefined') {
@@ -48,14 +49,12 @@ function getStoredValue<T>(key: string): T | undefined {
     }
 }
 
-function resolveDatasourceUid(dataSource: any): string {
+function resolveDatasourceUid(dataSource: any, datasources = getDataSourceSrv().getList()): string {
     if (!dataSource) {
         return '';
     }
     if (typeof dataSource === 'string') {
-        const matched = getDataSourceSrv()
-            .getList()
-            .find(ds => ds.uid === dataSource || ds.name === dataSource);
+        const matched = datasources.find(ds => ds.uid === dataSource || ds.name === dataSource);
         return matched?.uid || dataSource;
     }
     if (typeof dataSource === 'object') {
@@ -63,16 +62,14 @@ function resolveDatasourceUid(dataSource: any): string {
             return dataSource.uid;
         }
         if (dataSource.name) {
-            const matched = getDataSourceSrv()
-                .getList()
-                .find(ds => ds.name === dataSource.name);
+            const matched = datasources.find(ds => ds.name === dataSource.name);
             return matched?.uid || '';
         }
     }
     return '';
 }
 
-function resolveDatasourceFromParam(datasourceParam?: string | null) {
+function resolveDatasourceFromParam(datasourceParam: string | null | undefined, datasources = getDataSourceSrv().getList()) {
     if (!datasourceParam) {
         return undefined;
     }
@@ -82,9 +79,7 @@ function resolveDatasourceFromParam(datasourceParam?: string | null) {
         return undefined;
     }
 
-    return getDataSourceSrv()
-        .getList()
-        .find(ds => ds.uid === normalizedDatasource || ds.name === normalizedDatasource);
+    return datasources.find(ds => ds.uid === normalizedDatasource || ds.name === normalizedDatasource);
 }
 
 function parseUrlDate(value?: string | null) {
@@ -162,6 +157,12 @@ export default function TracesHeader() {
     const context = usePluginContext();
     const jsonData = context.meta.jsonData || {};
     const logsConfig = mergeLogsConfig((jsonData as AppPluginSettings).logsConfig);
+    const {
+        allowedDatasources,
+        allowedDatasourceUids,
+        loading: datasourcePermissionsLoading,
+        error: datasourcePermissionsError,
+    } = useDatasourcePermissions((jsonData as AppPluginSettings).teamDatasourcePermissions, 'TracesHeader');
     const hasInitializedUrlSyncRef = React.useRef(false);
     const locSearch = loc?.searchParams?.toString() ?? '';
 
@@ -213,9 +214,8 @@ export default function TracesHeader() {
     }, [setDatabases]);
 
     useEffect(() => {
-        const datasources = getDataSourceSrv().getList();
-        setDataSource(datasources);
-    }, [setDataSource]);
+        setDataSource(allowedDatasources);
+    }, [allowedDatasources, setDataSource]);
 
     useEffect(() => {
         if (currentIndex.length > 0) {
@@ -354,7 +354,7 @@ export default function TracesHeader() {
         const persistedDatasourceStorage = getStoredValue<{ uid?: string }>('discover-selected-datasource');
         const persistedDiscoverCurrentStorage = getStoredValue<{ database?: string; table?: string; timeField?: string }>('discover-current');
         const persistedTraceTableStorage = getStoredValue<string>('trace-current-table');
-        const urlDatasource = resolveDatasourceFromParam(urlSearchParams.get('datasource'));
+        const urlDatasource = resolveDatasourceFromParam(urlSearchParams.get('datasource'), allowedDatasources);
         const urlDatabase = urlSearchParams.get('database')?.trim() || '';
         const urlTable = urlSearchParams.get('table')?.trim() || '';
         const urlTimeField = urlSearchParams.get('timeField')?.trim() || '';
@@ -363,13 +363,17 @@ export default function TracesHeader() {
         const urlTimeRawFrom = urlSearchParams.get('timeRawFrom')?.trim() || '';
         const urlTimeRawTo = urlSearchParams.get('timeRawTo')?.trim() || '';
 
-        const configuredDatasourceUid = resolveDatasourceUid(logsConfig.datasource);
+        const configuredDatasourceUid = resolveDatasourceUid(logsConfig.datasource, allowedDatasources);
         const persistedDatasourceUid = urlDatasource?.uid || selectedDatasource?.uid || persistedDatasourceStorage?.uid;
         const persistedDatabase = urlDatabase || discoverCurrent.database || persistedDiscoverCurrentStorage?.database || '';
         const persistedTable = urlTable || currentTable || persistedTraceTableStorage || '';
         const persistedTimeField = urlTimeField || discoverCurrent.timeField || persistedDiscoverCurrentStorage?.timeField || '';
 
-        const defaultDatasourceUid = persistedDatasourceUid || configuredDatasourceUid || '';
+        const requestedDatasourceUid = persistedDatasourceUid || configuredDatasourceUid || '';
+        const defaultDatasourceUid =
+            requestedDatasourceUid && allowedDatasourceUids.has(requestedDatasourceUid)
+                ? requestedDatasourceUid
+                : allowedDatasources[0]?.uid || '';
         const defaultDatabase = persistedDatabase || logsConfig.database || '';
         const defaultTraceTable = persistedTable || logsConfig.targetTraceTable || logsConfig.logsTable || '';
 
@@ -388,6 +392,21 @@ export default function TracesHeader() {
             }));
         }
 
+        if (allowedDatasources.length === 0) {
+            setSelectedDatasource(undefined);
+            setDatabases([]);
+            setTables([]);
+            setCurrentTable('');
+            setDiscoverCurrent(prev => ({
+                ...prev,
+                database: '',
+                table: '',
+                timeField: '',
+            }));
+            hasInitializedUrlSyncRef.current = true;
+            return;
+        }
+
         if (!defaultDatasourceUid || !defaultDatabase) {
             hasInitializedUrlSyncRef.current = true;
             return;
@@ -397,7 +416,8 @@ export default function TracesHeader() {
             const ds =
                 selectedDatasource?.uid === defaultDatasourceUid
                     ? selectedDatasource
-                    : await getDataSourceSrv().get({ uid: defaultDatasourceUid });
+                    : allowedDatasources.find(datasource => datasource.uid === defaultDatasourceUid) ??
+                        await getDataSourceSrv().get({ uid: defaultDatasourceUid });
 
             if (!ds) {
                 return;
@@ -452,10 +472,14 @@ export default function TracesHeader() {
     }
 
     useEffect(() => {
+        if (datasourcePermissionsLoading || hasInitializedUrlSyncRef.current) {
+            return;
+        }
+
         void initHeaderData();
         // Initialize once: keep persisted values if they exist; otherwise apply config defaults.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [datasourcePermissionsLoading]);
 
     useEffect(() => {
         if (!hasInitializedUrlSyncRef.current) {
@@ -510,7 +534,10 @@ export default function TracesHeader() {
             `}
         >
             <DiscoverHeaderSearch>
-                <Field label="Datasource">
+                <Field
+                    label="Datasource"
+                    description={datasourcePermissionsError ? 'Failed to load team datasource permissions' : undefined}
+                >
                     {/* filter 这个版本无效 */}
                     <DataSourcePicker
                         width={20}
@@ -518,8 +545,13 @@ export default function TracesHeader() {
                         current={selectedDatasource}
                         placeholder="Choose"
                         noDefault
-                        filter={ds => ds.type === 'mysql'}
+                        disabled={datasourcePermissionsLoading || allowedDatasources.length === 0}
+                        isLoading={datasourcePermissionsLoading}
+                        filter={ds => ds.type === 'mysql' && allowedDatasourceUids.has(ds.uid)}
                         onChange={item => {
+                            if (!allowedDatasourceUids.has(item.uid)) {
+                                return;
+                            }
                             setSelectedDatasource(item);
                             updateShareParams({
                                 datasource: item?.uid || item?.name || '',

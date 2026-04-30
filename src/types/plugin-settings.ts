@@ -1,3 +1,9 @@
+export type TeamDatasourcePermission = {
+  teamId: number;
+  teamName: string;
+  datasourceUids: string[];
+};
+
 export type LogsConfig = {
   datasource?: any;
   database?: string;
@@ -8,6 +14,7 @@ export type LogsConfig = {
 export type AppPluginSettings = {
   apiUrl?: string;
   logsConfig?: LogsConfig;
+  teamDatasourcePermissions?: TeamDatasourcePermission[];
 };
 
 export const DEFAULT_LOGS_CONFIG: LogsConfig = {

@@ -1,9 +1,9 @@
 import React, { ChangeEvent, useState, useEffect } from 'react';
 import { lastValueFrom, Subscription } from 'rxjs';
 import { css } from '@emotion/css';
-import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps, PluginMeta, toDataFrame } from '@grafana/data';
+import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps, PluginMeta, SelectableValue, toDataFrame } from '@grafana/data';
 import { getBackendSrv, DataSourcePicker, getDataSourceSrv, logError } from '@grafana/runtime';
-import { Button, Field, FieldSet, Input, SecretInput, useStyles2, Select } from '@grafana/ui';
+import { Button, Field, FieldSet, Input, SecretInput, useStyles2, Select, MultiSelect } from '@grafana/ui';
 import { useAtom } from 'jotai';
 import { getDatabases, getTablesService } from 'services/metaservice';
 import { testIds } from '../testIds';
@@ -13,8 +13,10 @@ import {
   mergeLogsConfig,
   type AppPluginSettings,
   type LogsConfig,
+  type TeamDatasourcePermission,
 } from 'types/plugin-settings';
 import { toError } from 'utils/errors';
+import { fetchTeams, getMysqlDatasources, GrafanaTeam } from 'services/grafana-permissions';
 
 export type { AppPluginSettings, LogsConfig };
 export { DEFAULT_LOGS_CONFIG, mergeLogsConfig };
@@ -41,6 +43,10 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
   const logsConfig = mergeLogsConfig(jsonData?.logsConfig);
 
   const [currentLogsConfig, setCurrentLogsConfig] = useState<LogsConfig>(logsConfig);
+  const [teamDatasourcePermissions, setTeamDatasourcePermissions] = useState<TeamDatasourcePermission[]>(
+    jsonData?.teamDatasourcePermissions ?? [],
+  );
+  const [teams, setTeams] = useState<GrafanaTeam[]>([]);
   const [databases, setDatabases] = useAtom(settingDatabasesAtom);
   const [tables, setTables] = useAtom(settingTablesAtom);
 
@@ -55,6 +61,52 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
         .find(item => item.uid === ds || item.name === ds);
     }
     return ds;
+  }, []);
+  const datasourceOptions = React.useMemo<Array<SelectableValue<string>>>(() => {
+    try {
+      return getMysqlDatasources(getDataSourceSrv().getList()).map(ds => ({
+        label: ds.name,
+        value: ds.uid,
+      }));
+    } catch {
+      return [];
+    }
+  }, []);
+  const teamOptions = React.useMemo<Array<SelectableValue<number>>>(() => {
+    return teams.map(team => ({
+      label: team.name,
+      value: team.id,
+    }));
+  }, [teams]);
+
+  const updatePermission = React.useCallback((index: number, patch: Partial<TeamDatasourcePermission>) => {
+    setTeamDatasourcePermissions(current =>
+      current.map((permission, permissionIndex) =>
+        permissionIndex === index
+          ? {
+            ...permission,
+            ...patch,
+          }
+          : permission,
+      ),
+    );
+  }, []);
+
+  const addPermission = React.useCallback(() => {
+    const firstTeam = teams.find(team => !teamDatasourcePermissions.some(permission => permission.teamId === team.id));
+
+    setTeamDatasourcePermissions(current => [
+      ...current,
+      {
+        teamId: firstTeam?.id ?? 0,
+        teamName: firstTeam?.name ?? '',
+        datasourceUids: [],
+      },
+    ]);
+  }, [teamDatasourcePermissions, teams]);
+
+  const removePermission = React.useCallback((index: number) => {
+    setTeamDatasourcePermissions(current => current.filter((_, permissionIndex) => permissionIndex !== index));
   }, []);
 
   const fetchDatabases = React.useCallback((ds: any) => {
@@ -145,7 +197,8 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
       jsonData: {
         ...jsonData,
         apiUrl: state.apiUrl,
-        logsConfig: { ...currentLogsConfig }
+        logsConfig: { ...currentLogsConfig },
+        teamDatasourcePermissions: teamDatasourcePermissions.filter(permission => permission.teamId > 0)
       },
       // This cannot be queried later by the frontend.
       // We don't want to override it in case it was set previously and left untouched now.
@@ -156,6 +209,12 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
         }
     });
   }
+
+  useEffect(() => {
+    void fetchTeams()
+      .then(setTeams)
+      .catch((err: any) => logError(toError(err), { source: 'AppConfig', action: 'fetchTeams' }));
+  }, []);
 
   useEffect(() => {
     const datasourceRef = resolveDatasource(currentLogsConfig.datasource);
@@ -277,9 +336,54 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
               }}
             />
           </Field>
+          <Field label="Team Datasource Permissions" description="Users with no teams can view all MySQL datasources. Users in teams can only view datasources configured here.">
+            <div>
+              {teamDatasourcePermissions.map((permission, index) => {
+                const selectedDatasourceOptions = datasourceOptions.filter(option =>
+                  permission.datasourceUids.includes(option.value ?? ''),
+                );
+
+                return (
+                  <div className={s.permissionRow} key={`${permission.teamId}-${index}`}>
+                    <Select
+                      width={30}
+                      options={teamOptions}
+                      value={permission.teamId || undefined}
+                      placeholder="Choose team"
+                      onChange={(selectedTeam: SelectableValue<number>) => {
+                        updatePermission(index, {
+                          teamId: selectedTeam.value ?? 0,
+                          teamName: selectedTeam.label ?? '',
+                        });
+                      }}
+                    />
+                    <MultiSelect
+                      width={45}
+                      options={datasourceOptions}
+                      value={selectedDatasourceOptions}
+                      placeholder="Choose datasources"
+                      onChange={(selectedDatasources: Array<SelectableValue<string>>) => {
+                        updatePermission(index, {
+                          datasourceUids: selectedDatasources
+                            .map(datasource => datasource.value)
+                            .filter((uid): uid is string => Boolean(uid)),
+                        });
+                      }}
+                    />
+                    <Button type="button" variant="destructive" onClick={() => removePermission(index)}>
+                      Remove
+                    </Button>
+                  </div>
+                );
+              })}
+              <Button type="button" variant="secondary" onClick={addPermission}>
+                Add team permission
+              </Button>
+            </div>
+          </Field>
           <div className={s.marginTop}>
             <Button type='submit'>
-              Save Logs settings
+              Save plugin settings
             </Button>
           </div>
         </FieldSet>
@@ -297,6 +401,12 @@ const getStyles = (theme: GrafanaTheme2) => ({
   `,
   marginTop: css`
     margin-top: ${theme.spacing(3)};
+  `,
+  permissionRow: css`
+    display: flex;
+    gap: ${theme.spacing(1)};
+    margin-bottom: ${theme.spacing(1)};
+    align-items: flex-start;
   `,
 });
 
