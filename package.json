@@ -61,9 +61,6 @@
   "engines": {
     "node": ">=22"
   },
-  "resolutions": {
-    "**/serialize-javascript": "^7.0.3"
-  },
   "dependencies": {
     "@emotion/css": "11.10.6",
     "@emotion/styled": "^11.14.0",

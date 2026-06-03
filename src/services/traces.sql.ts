@@ -23,6 +23,11 @@ export function getQueryTableTraceSQL(params: QueryTraceDetailParams): string {
       duration / 1000 AS duration,
 
       CAST(span_attributes AS TEXT) AS tags,
+      CAST(ARRAY_MAP(e -> NAMED_STRUCT(
+        'timestamp', CAST(UNIX_TIMESTAMP(STRUCT_ELEMENT(e, 'timestamp')) * 1000 AS BIGINT),
+        'name', STRUCT_ELEMENT(e, 'name'),
+        'attributes', STRUCT_ELEMENT(e, 'attributes')
+      ), events) AS JSON) AS logs,
 
       span_kind AS kind,
       CASE

@@ -1,4 +1,4 @@
-import { buildTraceAggSQLFromParams } from 'services/traces.sql';
+import { buildTraceAggSQLFromParams, getQueryTableTraceSQL } from 'services/traces.sql';
 
 describe('buildTraceAggSQLFromParams', () => {
     const baseParams = {
@@ -29,5 +29,22 @@ describe('buildTraceAggSQLFromParams', () => {
         });
 
         expect(sql).toContain('AND trace_duration_ms >= 250');
+    });
+});
+
+describe('getQueryTableTraceSQL', () => {
+    it('selects Doris span events as Grafana trace logs', () => {
+        const sql = getQueryTableTraceSQL({
+            database: 'otel',
+            table: 'traces',
+            trace_id: 'abc123',
+        });
+
+        expect(sql).toContain('CAST(ARRAY_MAP(e -> NAMED_STRUCT(');
+        expect(sql).toContain("'timestamp', CAST(UNIX_TIMESTAMP(STRUCT_ELEMENT(e, 'timestamp')) * 1000 AS BIGINT)");
+        expect(sql).toContain("'name', STRUCT_ELEMENT(e, 'name')");
+        expect(sql).toContain("'attributes', STRUCT_ELEMENT(e, 'attributes')");
+        expect(sql).toContain('), events) AS JSON) AS logs');
+        expect(sql).toContain('AS logs');
     });
 });

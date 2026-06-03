@@ -1,13 +1,71 @@
-import { LoadingState } from '@grafana/data';
+import { FieldType, LoadingState, usePluginContext } from '@grafana/data';
 import { PanelRenderer, logError } from '@grafana/runtime';
 import { Drawer, LoadingPlaceholder } from '@grafana/ui';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
 import { useAtom, useAtomValue } from 'jotai';
 import React, { useEffect } from 'react';
+import { FORMAT_DATE, ROUTES } from '../../constants';
 import { getTableDataTraceService } from 'services/traces';
 import { currentCatalogAtom, currentDatabaseAtom, tableTracesDataAtom, selectedDatasourceAtom, selectedRowAtom } from 'store/discover';
 import { currentTraceTableAtom } from 'store/traces';
+import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
 import { formatTracesResData } from 'utils/data';
 import { toError } from 'utils/errors';
+import { prefixRoute } from 'utils/utils.routing';
+
+const SPAN_LOGS_WINDOW_PADDING_MS = 30 * 1000;
+
+dayjs.extend(utc);
+
+function escapeLucenePhrase(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function getSpanTimeRange(span: any) {
+    const spanStartTimeMs = Math.floor(Number(span.startTime || 0) / 1000);
+    const spanDurationMs = Math.ceil(Number(span.duration || 0) / 1000);
+    const start = dayjs.utc(spanStartTimeMs - SPAN_LOGS_WINDOW_PADDING_MS);
+    const end = dayjs.utc(spanStartTimeMs + Math.max(spanDurationMs, 0) + SPAN_LOGS_WINDOW_PADDING_MS);
+
+    return { start, end };
+}
+
+function buildDiscoverLogsUrl(params: {
+    datasource?: string;
+    database?: string;
+    table?: string;
+    timeField?: string;
+    traceId: string;
+    spanId?: string;
+    serviceName?: string;
+    start: dayjs.Dayjs;
+    end: dayjs.Dayjs;
+}) {
+    const searchParams = new URLSearchParams();
+    const traceQuery = `trace_id:"${escapeLucenePhrase(params.traceId)}"`;
+    const spanScopeQuery = [
+        params.spanId ? `span_id:"${escapeLucenePhrase(params.spanId)}"` : '',
+        params.serviceName ? `service_name:"${escapeLucenePhrase(params.serviceName)}"` : '',
+    ].filter(Boolean);
+
+    if (params.datasource) {
+        searchParams.set('datasource', params.datasource);
+    }
+    if (params.database) {
+        searchParams.set('database', params.database);
+    }
+    if (params.table) {
+        searchParams.set('table', params.table);
+    }
+    searchParams.set('mode', 'Lucene');
+    searchParams.set('query', spanScopeQuery.length > 0 ? `${traceQuery} AND (${spanScopeQuery.join(' OR ')})` : traceQuery);
+    searchParams.set('timeField', params.timeField || 'timestamp');
+    searchParams.set('startTime', params.start.format(FORMAT_DATE));
+    searchParams.set('endTime', params.end.format(FORMAT_DATE));
+
+    return `${prefixRoute(ROUTES.Discover)}?${searchParams.toString()}`;
+}
 
 export default function TraceDetail(props: { onClose?: () => void; open: boolean; traceId?: string; traceTable?: string }) {
     const currentTable = useAtomValue(currentTraceTableAtom);
@@ -18,8 +76,51 @@ export default function TraceDetail(props: { onClose?: () => void; open: boolean
     const selectdbDS = useAtomValue(selectedDatasourceAtom);
     const traceTable = props?.traceTable || currentTable || 'otel_traces';
     const [loading, setLoading] = React.useState(false);
+    const context = usePluginContext();
+    const logsConfig = mergeLogsConfig((context.meta.jsonData as AppPluginSettings | undefined)?.logsConfig);
 
     const { open, traceId } = props;
+
+    const createSpanLink = React.useCallback((span: any) => {
+        const traceId = span.traceID || props.traceId || '';
+        const spanId = span.spanID || '';
+        const serviceName = span.process?.serviceName || '';
+
+        if (!traceId) {
+            return undefined;
+        }
+
+        const { start, end } = getSpanTimeRange(span);
+        const href = buildDiscoverLogsUrl({
+            datasource: selectdbDS?.uid || selectdbDS?.name || '',
+            database: logsConfig.database || currentDatabase,
+            table: logsConfig.logsTable || 'otel_logs',
+            timeField: 'timestamp',
+            traceId,
+            spanId,
+            serviceName,
+            start,
+            end,
+        });
+
+        return [
+            {
+                href,
+                content: 'Logs',
+                title: 'Logs for this span',
+                type: 'log',
+                field: {
+                    name: 'span_id',
+                    type: FieldType.string,
+                    config: {},
+                    values: [],
+                },
+                onClick: () => {
+                    window.location.assign(href);
+                },
+            },
+        ];
+    }, [currentDatabase, logsConfig.database, logsConfig.logsTable, props.traceId, selectdbDS?.name, selectdbDS?.uid]);
 
     const getTraceData = React.useCallback(() => {
         let payload: any = {
@@ -64,7 +165,7 @@ export default function TraceDetail(props: { onClose?: () => void; open: boolean
                     width={200}
                     height={300}
                     pluginId="traces"
-                    options={{}}
+                    options={{ createSpanLink }}
                     data={{
                         state: loading ? LoadingState.Loading : LoadingState.Done,
                         series: [traceData],
