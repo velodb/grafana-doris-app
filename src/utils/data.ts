@@ -643,6 +643,104 @@ export function formatTimestampToDateTime(timestamp: any, precision = 3) {
     return dayjs.utc(timestamp).locale(currentLocale).format(formatString);
 }
 
+function parseJsonIfString(item: any) {
+    if (typeof item !== 'string') {
+        return item;
+    }
+
+    const trimmed = item.trim();
+    if (!trimmed) {
+        return item;
+    }
+
+    try {
+        return JSON.parse(trimmed);
+    } catch {
+        return item;
+    }
+}
+
+function normalizeTraceTags(item: any) {
+    const parsed = parseJsonIfString(item);
+
+    if (Array.isArray(parsed)) {
+        return parsed.map(tag => {
+            if (tag && typeof tag === 'object' && 'key' in tag && 'value' in tag) {
+                return tag;
+            }
+
+            return {
+                key: String(tag),
+                value: '',
+            };
+        });
+    }
+
+    if (parsed && typeof parsed === 'object') {
+        return Object.entries(parsed).map(([key, value]) => ({
+            key,
+            value,
+        }));
+    }
+
+    return [];
+}
+
+function normalizeTraceLogTimestamp(timestamp: any) {
+    if (typeof timestamp === 'number' && Number.isFinite(timestamp)) {
+        return timestamp;
+    }
+
+    if (typeof timestamp === 'string') {
+        const numericTimestamp = Number(timestamp);
+        if (Number.isFinite(numericTimestamp)) {
+            return numericTimestamp;
+        }
+
+        const parsedTimestamp = dayjs.utc(timestamp.replace(' ', 'T'));
+        if (parsedTimestamp.isValid()) {
+            return parsedTimestamp.valueOf();
+        }
+    }
+
+    return timestamp;
+}
+
+function normalizeTraceLogs(item: any) {
+    const parsed = parseJsonIfString(item);
+
+    if (!Array.isArray(parsed)) {
+        return [];
+    }
+
+    return parsed.map(event => {
+        const parsedEvent = parseJsonIfString(event);
+        if (!parsedEvent || typeof parsedEvent !== 'object') {
+            return {
+                timestamp: 0,
+                fields: [{ key: 'event', value: parsedEvent }],
+            };
+        }
+
+        const existingFields = Array.isArray(parsedEvent.fields) ? normalizeTraceTags(parsedEvent.fields) : [];
+        const eventName = parsedEvent.name ?? parsedEvent.event ?? parsedEvent.event_name;
+        const eventAttributes = normalizeTraceTags(parsedEvent.attributes ?? parsedEvent.event_attributes ?? {});
+        const extraFields = Object.entries(parsedEvent)
+            .filter(([key]) => !['timestamp', 'time', 'name', 'event', 'event_name', 'attributes', 'event_attributes', 'fields'].includes(key))
+            .map(([key, value]) => ({ key, value }));
+
+        return {
+            timestamp: normalizeTraceLogTimestamp(parsedEvent.timestamp ?? parsedEvent.time),
+            fields: [
+                ...(eventName !== undefined ? [{ key: 'event', value: eventName }] : []),
+                ...existingFields,
+                ...eventAttributes,
+                ...extraFields,
+            ],
+        };
+    });
+}
+
 export function formatTracesResData(frame: any) {
     const { data } = frame;
     const traceDataFrame: DataFrame = {
@@ -657,31 +755,18 @@ export function formatTracesResData(frame: any) {
         })),
         length: data.values[0].length,
     };
-    try {
-        const normalizeTraceTags = (item: any) => {
-            const parsed = typeof item === 'string' ? JSON.parse(item) : item;
+    traceDataFrame.fields.forEach(f => {
+        if (f.name === 'serviceTags' || f.name === 'tags') {
+            f.type = FieldType.other;
+            f.values = f.values.map(item => normalizeTraceTags(item));
+        }
 
-            if (Array.isArray(parsed)) {
-                return parsed;
-            }
+        if (f.name === 'logs') {
+            f.type = FieldType.other;
+            f.values = f.values.map(item => normalizeTraceLogs(item));
+        }
+    });
 
-            if (parsed && typeof parsed === 'object') {
-                return Object.entries(parsed).map(([key, value]) => ({
-                    key,
-                    value,
-                }));
-            }
-
-            return [];
-        };
-
-        traceDataFrame.fields.forEach(f => {
-            if (f.name === 'serviceTags' || f.name === 'tags') {
-                f.type = FieldType.other;
-                f.values = f.values.map(item => normalizeTraceTags(item));
-            }
-        });
-    } catch { }
     return traceDataFrame;
 }
 
