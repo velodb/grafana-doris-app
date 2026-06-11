@@ -7,7 +7,7 @@ import SQLSearch from './sql-search';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { DataSourcePicker, getDataSourceSrv, logError } from '@grafana/runtime';
 import { css } from '@emotion/css';
-import { dateTime, rangeUtil, usePluginContext, toDataFrame } from '@grafana/data';
+import { TimeZone, dateTime, usePluginContext, toDataFrame } from '@grafana/data';
 import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
 import {
     indexesAtom,
@@ -26,18 +26,26 @@ import {
     selectedDatasourceAtom,
     searchValueAtom,
     timeRangeAtom,
+    timeZoneAtom,
     databasesAtom,
     tablesAtom,
     currentTableAtom,
 } from 'store/discover';
 import { DISCOVER_SHORTCUTS, getLatestTime, isValidTimeFieldType } from 'utils/data';
 import { Select, Field, Button, useTheme2, TimeRangeInput } from '@grafana/ui';
-import { FORMAT_DATE } from '../../constants';
 import { getDatabases, getFieldsService, getIndexesService, getTablesService } from 'services/metaservice';
 import { Subscription } from 'rxjs';
 import Lucene from './lucene';
 import { toError } from 'utils/errors';
 import { useDatasourcePermissions } from 'hooks/useDatasourcePermissions';
+import {
+    buildAbsoluteTimeRange,
+    buildRelativeTimeRange,
+    formatTimeInZone,
+    normalizeTimeZone,
+    parseTimeInZone,
+    toDayjsRange,
+} from 'utils/time';
 
 function getStoredValue<T>(key: string): T | undefined {
     if (typeof window === 'undefined') {
@@ -106,15 +114,6 @@ function resolveDatasourceFromParam(datasourceParam: string | null | undefined, 
     return datasources.find(ds => ds.uid === normalizedDatasource || ds.name === normalizedDatasource);
 }
 
-function parseUrlDate(value?: string | null) {
-    if (!value) {
-        return undefined;
-    }
-
-    const parsedDate = dayjs(value);
-    return parsedDate.isValid() ? parsedDate : undefined;
-}
-
 function normalizeRawTimeValue(value: unknown): string | undefined {
     if (typeof value !== 'string') {
         return undefined;
@@ -131,36 +130,12 @@ function isRelativeRawRange(raw?: { from?: unknown; to?: unknown }) {
     return Boolean(from?.startsWith('now') && to?.startsWith('now'));
 }
 
-function buildAbsoluteTimeRange(start: dayjs.Dayjs, end: dayjs.Dayjs) {
-    return {
-        from: dateTime(start.toDate()),
-        to: dateTime(end.toDate()),
-        raw: {
-            from: dateTime(start.toDate()),
-            to: dateTime(end.toDate()),
-        },
-    };
-}
-
 function findShortcutByRaw(rawFrom?: string, rawTo?: string) {
     if (!rawFrom || !rawTo) {
         return undefined;
     }
 
     return DISCOVER_SHORTCUTS.find(shortcut => shortcut.raw.from === rawFrom && shortcut.raw.to === rawTo);
-}
-
-function buildRelativeTimeRange(rawFrom: string, rawTo: string) {
-    const relativeRange = rangeUtil.convertRawToRange({ from: rawFrom, to: rawTo });
-
-    return {
-        from: relativeRange.from,
-        to: relativeRange.to,
-        raw: {
-            from: rawFrom,
-            to: rawTo,
-        },
-    };
 }
 
 export default function DiscoverHeader(
@@ -201,6 +176,7 @@ export default function DiscoverHeader(
     const [tables, setTables] = useAtom(tablesAtom);
     const [_datasources] = useAtom(datasourcesAtom);
     const [searchValue, setSearchValue] = useAtom(searchValueAtom);
+    const [timeZone, setTimeZone] = useAtom(timeZoneAtom);
     const searchMode = searchType === 'Search';
 
     const selectdbDS = useAtomValue(selectedDatasourceAtom);
@@ -413,9 +389,11 @@ export default function DiscoverHeader(
         const urlTable = urlSearchParams.get('table')?.trim() || '';
         const urlMode = normalizeMode(urlSearchParams.get('mode'));
         const urlSearchValue = urlSearchParams.get('query') ?? urlSearchParams.get('searchValue') ?? '';
+        const urlTimeZone = normalizeTimeZone(urlSearchParams.get('timeZone'));
+        const effectiveTimeZone = urlTimeZone || timeZone;
         const urlTimeField = urlSearchParams.get('timeField')?.trim() || '';
-        const urlStartTime = parseUrlDate(urlSearchParams.get('startTime'));
-        const urlEndTime = parseUrlDate(urlSearchParams.get('endTime'));
+        const urlStartTime = parseTimeInZone(urlSearchParams.get('startTime'), effectiveTimeZone);
+        const urlEndTime = parseTimeInZone(urlSearchParams.get('endTime'), effectiveTimeZone);
         const urlTimeRawFrom = urlSearchParams.get('timeRawFrom')?.trim() || '';
         const urlTimeRawTo = urlSearchParams.get('timeRawTo')?.trim() || '';
         const matchedShortcut = findShortcutByRaw(urlTimeRawFrom, urlTimeRawTo);
@@ -435,10 +413,14 @@ export default function DiscoverHeader(
         const hasRelativeTimeParams = Boolean(urlTimeRawFrom && urlTimeRawTo);
         const hasAbsoluteTimeParams = Boolean(urlStartTime && urlEndTime);
 
+        if (urlTimeZone && urlTimeZone !== timeZone) {
+            setTimeZone(urlTimeZone);
+        }
+
         if (hasRelativeTimeParams && urlTimeRawFrom && urlTimeRawTo) {
-            const relativeTimeRange = buildRelativeTimeRange(urlTimeRawFrom, urlTimeRawTo);
+            const relativeTimeRange = buildRelativeTimeRange(urlTimeRawFrom, urlTimeRawTo, effectiveTimeZone);
             setActiveItem(matchedShortcut);
-            setCurrentDate([dayjs(relativeTimeRange.from.toDate()), dayjs(relativeTimeRange.to.toDate())]);
+            setCurrentDate(toDayjsRange(relativeTimeRange));
             setTimeRange((prev: any) => ({
                 ...prev,
                 ...relativeTimeRange,
@@ -569,13 +551,16 @@ export default function DiscoverHeader(
         const urlSearchParams = new URLSearchParams(locSearch);
         const urlTimeRawFrom = urlSearchParams.get('timeRawFrom')?.trim() || '';
         const urlTimeRawTo = urlSearchParams.get('timeRawTo')?.trim() || '';
-        const urlStartTime = parseUrlDate(urlSearchParams.get('startTime'));
-        const urlEndTime = parseUrlDate(urlSearchParams.get('endTime'));
+        const urlStartTimeParam = urlSearchParams.get('startTime')?.trim() || '';
+        const urlEndTimeParam = urlSearchParams.get('endTime')?.trim() || '';
+        const urlTimeZone = normalizeTimeZone(urlSearchParams.get('timeZone')) || timeZone;
+        const urlStartTime = parseTimeInZone(urlStartTimeParam, urlTimeZone);
+        const urlEndTime = parseTimeInZone(urlEndTimeParam, urlTimeZone);
         const rawFrom = normalizeRawTimeValue(timeRange?.raw?.from);
         const rawTo = normalizeRawTimeValue(timeRange?.raw?.to);
         const shouldShareRelativeRaw = isRelativeRawRange(timeRange?.raw);
-        const currentStartTime = _currentDate[0]?.format(FORMAT_DATE);
-        const currentEndTime = _currentDate[1]?.format(FORMAT_DATE);
+        const currentStartTime = _currentDate[0] ? formatTimeInZone(_currentDate[0], timeZone) : undefined;
+        const currentEndTime = _currentDate[1] ? formatTimeInZone(_currentDate[1], timeZone) : undefined;
 
         const hasRelativeTimeParams = Boolean(urlTimeRawFrom && urlTimeRawTo);
         const hasAbsoluteTimeParams = Boolean(urlStartTime && urlEndTime);
@@ -583,8 +568,8 @@ export default function DiscoverHeader(
         const isAbsoluteTimeSynced =
             hasAbsoluteTimeParams &&
             !shouldShareRelativeRaw &&
-            currentStartTime === urlStartTime?.format(FORMAT_DATE) &&
-            currentEndTime === urlEndTime?.format(FORMAT_DATE);
+            currentStartTime === urlStartTimeParam &&
+            currentEndTime === urlEndTimeParam;
 
         if ((hasRelativeTimeParams || hasAbsoluteTimeParams) && !isRelativeTimeSynced && !isAbsoluteTimeSynced) {
             return;
@@ -597,12 +582,13 @@ export default function DiscoverHeader(
             mode: searchType,
             query: searchValue,
             timeField: currentTimeField,
+            timeZone,
             startTime: shouldShareRelativeRaw ? undefined : currentStartTime,
             endTime: shouldShareRelativeRaw ? undefined : currentEndTime,
             timeRawFrom: shouldShareRelativeRaw ? rawFrom : undefined,
             timeRawTo: shouldShareRelativeRaw ? rawTo : undefined,
         });
-    }, [currentTable, currentTimeField, _currentDate, discoverCurrent.database, discoverCurrent.table, locSearch, searchType, searchValue, selectedDatasource, timeRange?.raw, updateShareParams]);
+    }, [currentTable, currentTimeField, _currentDate, discoverCurrent.database, discoverCurrent.table, locSearch, searchType, searchValue, selectedDatasource, timeRange?.raw, timeZone, updateShareParams]);
 
     return (
         <div
@@ -730,8 +716,7 @@ export default function DiscoverHeader(
                         <TimeRangeInput
                             isReversed={false}
                             onChange={timeRange => {
-                                const start = dayjs(timeRange.from.toDate());
-                                const end = dayjs(timeRange.to.toDate());
+                                const [start, end] = toDayjsRange(timeRange);
                                 setActiveItem(undefined);
                                 const rawFrom = normalizeRawTimeValue(timeRange.raw?.from);
                                 const rawTo = normalizeRawTimeValue(timeRange.raw?.to);
@@ -745,11 +730,12 @@ export default function DiscoverHeader(
                                         searchParams?.set('timeRawFrom', rawFrom);
                                         searchParams?.set('timeRawTo', rawTo);
                                     } else {
-                                        searchParams?.set('startTime', start.format(FORMAT_DATE));
-                                        searchParams?.set('endTime', end.format(FORMAT_DATE));
+                                        searchParams?.set('startTime', formatTimeInZone(start, timeZone));
+                                        searchParams?.set('endTime', formatTimeInZone(end, timeZone));
                                         searchParams?.delete('timeRawFrom');
                                         searchParams?.delete('timeRawTo');
                                     }
+                                    searchParams?.set('timeZone', timeZone);
                                     return {
                                         ...prev,
                                         searchParams,
@@ -763,6 +749,11 @@ export default function DiscoverHeader(
                                     raw: hasRelativeRaw && rawFrom && rawTo ? { from: rawFrom, to: rawTo } : { from: dateTime(timeRange.from.toDate()), to: dateTime(timeRange.to.toDate()) },
                                 });
                             }}
+                            onChangeTimeZone={(nextTimeZone: TimeZone) => {
+                                setTimeZone(nextTimeZone);
+                                updateShareParams({ timeZone: nextTimeZone });
+                            }}
+                            timeZone={timeZone}
                             value={timeRange}
                         />
                     </Field>

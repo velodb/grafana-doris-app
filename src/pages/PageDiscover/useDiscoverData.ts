@@ -21,6 +21,7 @@ import {
     tableFieldsAtom,
     tableTotalCountAtom,
     tableTracesDataAtom,
+    timeZoneAtom,
     topDataAtom,
 } from 'store/discover';
 import { getTableDataChartsService, getTableDataCountService, getTableDataService, getTopDataService } from 'services/discover';
@@ -36,11 +37,12 @@ import {
 } from 'utils/data';
 import { generateTableDataUID } from 'utils/utils';
 import { message } from 'antd';
-import { FORMAT_DATE, getAutoInterval, IntervalEnum } from '../../constants';
+import { getAutoInterval, IntervalEnum } from '../../constants';
 import { toDataFrame } from '@grafana/data';
 import { logError } from '@grafana/runtime';
 import { useLuceneWhereClause } from './useLuceneWhereClause';
 import { toError } from 'utils/errors';
+import { formatTimeInZone } from 'utils/time';
 
 type RefreshOptions = {
     skipPageReset?: boolean;
@@ -66,10 +68,17 @@ export function useDiscoverData() {
     const currentCatalog = useAtomValue(currentCatalogAtom);
     const currentDatabase = useAtomValue(currentDatabaseAtom);
     const currentDate = useAtomValue(currentDateAtom);
+    const timeZone = useAtomValue(timeZoneAtom);
     const setTableTotalCount = useSetAtom(tableTotalCountAtom);
     const setTraceData = useSetAtom(tableTracesDataAtom);
     const [loading, setLoading] = useAtom(discoverLoadingAtom);
     const buildLuceneWhereClause = useLuceneWhereClause();
+    const formatCurrentTime = useCallback(
+        (time?: Dayjs) => {
+            return time ? formatTimeInZone(time, timeZone) : undefined;
+        },
+        [timeZone],
+    );
 
     const getTableData = useCallback(async () => {
         if (!currentTable || !currentDatabase || !selectdbDS) {
@@ -82,8 +91,8 @@ export function useDiscoverData() {
             database: currentDatabase,
             table: currentTable,
             timeField: currentTimeField,
-            startDate: currentDate[0]?.format(FORMAT_DATE),
-            endDate: (currentDate[1] as Dayjs).format(FORMAT_DATE),
+            startDate: formatCurrentTime(currentDate[0]),
+            endDate: formatCurrentTime(currentDate[1] as Dayjs),
             cluster: '',
             sort: 'DESC',
             search_type: searchType,
@@ -164,6 +173,7 @@ export function useDiscoverData() {
         searchType,
         searchValue,
         selectdbDS,
+        formatCurrentTime,
         setLoading,
         setTableData,
         tableFields,
@@ -183,8 +193,8 @@ export function useDiscoverData() {
             database: currentDatabase,
             table: currentTable,
             timeField: currentTimeField,
-            startDate: currentDate[0]?.format(FORMAT_DATE),
-            endDate: (currentDate[1] as Dayjs).format(FORMAT_DATE),
+            startDate: formatCurrentTime(currentDate[0]),
+            endDate: formatCurrentTime(currentDate[1] as Dayjs),
             cluster: '',
             data_filters: [],
             sort: 'DESC',
@@ -260,6 +270,7 @@ export function useDiscoverData() {
         searchType,
         searchValue,
         selectdbDS,
+        formatCurrentTime,
         setLoading,
         setTableDataCharts,
         tableFields,
@@ -275,8 +286,8 @@ export function useDiscoverData() {
             database: currentDatabase,
             table: currentTable,
             timeField: currentTimeField,
-            startDate: currentDate[0]?.format(FORMAT_DATE),
-            endDate: (currentDate[1] as Dayjs).format(FORMAT_DATE),
+            startDate: formatCurrentTime(currentDate[0]),
+            endDate: formatCurrentTime(currentDate[1] as Dayjs),
             cluster: '',
             sort: 'DESC',
             search_type: searchType,
@@ -341,6 +352,7 @@ export function useDiscoverData() {
         searchType,
         searchValue,
         selectdbDS,
+        formatCurrentTime,
         setTopData,
         tableFields,
     ]);
@@ -358,8 +370,8 @@ export function useDiscoverData() {
             database: currentDatabase,
             table: currentTable,
             timeField: currentTimeField,
-            startDate: currentDate[0]?.format(FORMAT_DATE),
-            endDate: (currentDate[1] as Dayjs).format(FORMAT_DATE),
+            startDate: formatCurrentTime(currentDate[0]),
+            endDate: formatCurrentTime(currentDate[1] as Dayjs),
             cluster: '',
             sort: 'DESC',
             interval: timeInterval,
@@ -427,6 +439,7 @@ export function useDiscoverData() {
         searchType,
         searchValue,
         selectdbDS,
+        formatCurrentTime,
         setLoading,
         setTableTotalCount,
         tableFields,
@@ -440,8 +453,8 @@ export function useDiscoverData() {
                 database: currentDatabase,
                 table: table || currentTable || 'otel_traces',
                 timeField: currentTimeField,
-                startDate: currentDate[0]?.format(FORMAT_DATE),
-                endDate: (currentDate[1] as Dayjs).format(FORMAT_DATE),
+                startDate: formatCurrentTime(currentDate[0]),
+                endDate: formatCurrentTime(currentDate[1] as Dayjs),
                 cluster: '',
                 sort: 'DESC',
                 search_type: searchType,
@@ -496,6 +509,7 @@ export function useDiscoverData() {
             searchType,
             searchValue,
             selectdbDS,
+            formatCurrentTime,
             setTraceData,
             tableFields,
         ],

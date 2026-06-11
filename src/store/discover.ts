@@ -2,10 +2,11 @@ import { atom } from 'jotai';
 import { atomWithStorage, selectAtom } from 'jotai/utils';
 // import { focusAtom } from 'jotai-optics'
 import { atomWithLocation } from 'jotai-location';
-import { DataSourceInstanceSettings, DataSourceJsonData } from '@grafana/data';
+import { DataSourceInstanceSettings, DataSourceJsonData, dateTime, TimeZone } from '@grafana/data';
 import { Dayjs } from 'dayjs';
 import { DataFilterType, DiscoverCurrent, IntervalEnum, ShortcutItem } from 'types/type';
 import { AggregatableEnum, DISCOVER_DEFAULT_STATUS, DISCOVER_SHORTCUTS, FieldTypeEnum, SearchableEnum } from 'utils/data';
+import { getGrafanaUserTimeZone } from 'utils/time';
 
 export const locationAtom = atomWithLocation();
 export const dataFilterAtom = atom<DataFilterType[]>([]);
@@ -70,9 +71,10 @@ export const surroundingSelectedFieldsAtom = atom<any[]>([]);
 
 export const datasourcesAtom = atom<Array<DataSourceInstanceSettings<DataSourceJsonData>>>([]);
 export const selectedDatasourceAtom = atomWithStorage<DataSourceInstanceSettings<DataSourceJsonData> | undefined>('discover-selected-datasource', undefined);
+export const timeZoneAtom = atomWithStorage<TimeZone>('discover-time-zone', getGrafanaUserTimeZone());
 export const timeRangeAtom = atom<any>({
-    from: DISCOVER_SHORTCUTS[3].range()[0].toDate(),
-    to: DISCOVER_SHORTCUTS[3].range()[1].toDate(),
+    from: dateTime(DISCOVER_SHORTCUTS[3].range()[0].toDate()),
+    to: dateTime(DISCOVER_SHORTCUTS[3].range()[1].toDate()),
     raw: DISCOVER_SHORTCUTS[3].raw,
 });
 
