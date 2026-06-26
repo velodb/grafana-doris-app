@@ -119,7 +119,7 @@ function getPrimitiveFieldType(columnType?: string): 'NUMBER' | 'DATE' | 'BOOLEA
     if (normalizedType.includes('BOOLEAN')) {
         return 'BOOLEAN';
     }
-    if (['VARCHAR', 'STRING', 'CHAR', 'TEXT', 'JSONB', 'ARRAY'].some(type => normalizedType.includes(type))) {
+    if (['VARCHAR', 'STRING', 'CHAR', 'TEXT', 'JSONB', 'ARRAY', 'VARIANT'].some(type => normalizedType.includes(type))) {
         return 'TEXT';
     }
 

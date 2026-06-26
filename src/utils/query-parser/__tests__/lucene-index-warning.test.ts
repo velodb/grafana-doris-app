@@ -7,6 +7,7 @@ describe('getLuceneFieldsWithoutInvertedIndex', () => {
         { Field: 'duration', Type: 'Int64' },
         { Field: 'timestamp', Type: 'DateTime' },
         { Field: 'success', Type: 'Boolean' },
+        { Field: 'attrs', Type: 'Variant' },
     ];
 
     it('returns text search fields that do not have inverted indexes', () => {
@@ -47,5 +48,11 @@ describe('getLuceneFieldsWithoutInvertedIndex', () => {
 
     it('returns no fields for invalid Lucene syntax', () => {
         expect(getLuceneFieldsWithoutInvertedIndex('message:(', [], tableFields)).toEqual([]);
+    });
+
+    it('warns for variant nested text searches without inverted indexes', () => {
+        expect(getLuceneFieldsWithoutInvertedIndex('attrs.message:error', [], tableFields)).toEqual([
+            'attrs.message',
+        ]);
     });
 });
