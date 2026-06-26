@@ -29,7 +29,6 @@ import { getTableDataTraceService } from 'services/traces';
 import {
     encodeBase64,
     getChartsData,
-    convertColumnToRow,
     convertColumnToRowViaFieldsType,
     generateHighlightedResults,
     formatTracesResData,
@@ -140,7 +139,7 @@ export function useDiscoverData() {
                     setTableData([]);
                     return;
                 }
-                const rowsData = convertColumnToRow(frames[0]);
+                const rowsData = convertColumnToRowViaFieldsType(frames[0], tableFields);
                 const resData = generateHighlightedResults(
                     {
                         search_value: searchValue,

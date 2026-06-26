@@ -7,6 +7,7 @@ export enum JSDataType {
     Tuple = 'tuple',
     Bool = 'bool',
     JSON = 'json',
+    Variant = 'variant',
     Dynamic = 'dynamic', // json type will store anything as Dynamic type by default
 }
 
@@ -42,6 +43,8 @@ export const convertCHDataTypeToJSType = (dataType: string): JSDataType | null =
         return JSDataType.Bool;
     } else if (dataType.startsWith('JSON')) {
         return JSDataType.JSON;
+    } else if (dataType.toLowerCase().startsWith('variant')) {
+        return JSDataType.Variant;
     } else if (dataType.startsWith('Dynamic')) {
         return JSDataType.Dynamic;
     } else if (dataType.startsWith('LowCardinality')) {

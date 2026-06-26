@@ -31,7 +31,7 @@ import SurroundingLogs from 'components/surrounding-logs';
 import TraceDetail from 'components/trace-detail';
 import { usePluginContext } from '@grafana/data';
 import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
-import { formatTimestampToDateTime, isValidTimeFieldType } from 'utils/data';
+import { formatFieldDisplayValue, formatTimestampToDateTime, isValidTimeFieldType, parseJsonLikeValue } from 'utils/data';
 
 
 export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetchNextPage: (page: number) => void; getTraceData: (traceId: string, table?: string, callback?: Function) => any }) {
@@ -127,74 +127,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
     );
 
     const renderSubComponent = ({ row }: { row: Row<any> }) => {
-        // process object
-        const processObject = (obj: any): any => {
-            if (typeof obj !== 'object' || obj === null) {
-                return obj;
-            }
-
-            const result: any = {};
-            for (const key in obj) {
-                if (obj.hasOwnProperty(key)) {
-                    let value = obj[key];
-
-                    if (typeof value === 'string') {
-                        let cleanValue = value.trim();
-
-                        // check for escaped double quotes
-                        if (cleanValue.includes('\\"')) {
-                            try {
-                                cleanValue = JSON.parse(`"${cleanValue}"`);
-                            } catch (e) {
-                                // if parsing fails, keep the original value
-                            }
-                        }
-
-                        // check for JSON
-                        if ((cleanValue.startsWith('{') && cleanValue.endsWith('}')) || (cleanValue.startsWith('[') && cleanValue.endsWith(']'))) {
-                            try {
-                                const parsed = JSON.parse(cleanValue);
-                                value = processObject(parsed);
-                            } catch (e) {
-                                value = obj[key];
-                            }
-                        } else {
-                            value = obj[key];
-                        }
-                    } else if (Array.isArray(value)) {
-                        value = value.map(item => {
-                            if (typeof item === 'string') {
-                                let cleanItem = item.trim();
-
-                                if (cleanItem.includes('\\"')) {
-                                    try {
-                                        cleanItem = JSON.parse(`"${cleanItem}"`);
-                                    } catch (e) { }
-                                }
-
-                                if ((cleanItem.startsWith('{') && cleanItem.endsWith('}')) || (cleanItem.startsWith('[') && cleanItem.endsWith(']'))) {
-                                    try {
-                                        const parsed = JSON.parse(cleanItem);
-                                        return processObject(parsed);
-                                    } catch {
-                                        return item;
-                                    }
-                                }
-                                return item;
-                            }
-                            return typeof item === 'object' && item !== null ? processObject(item) : item;
-                        });
-                    } else if (typeof value === 'object' && value !== null) {
-                        value = processObject(value);
-                    }
-
-                    result[key] = value;
-                }
-            }
-            return result;
-        };
-
-        const processedData = processObject(row.original._original);
+        const processedData = parseJsonLikeValue(row.original._original);
 
         const subTableData = Object.keys(processedData).map(key => {
             return {
@@ -247,11 +180,8 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                         >
                             <tbody>
                                 {subTableData.map((item: any) => {
-                                    let fieldValue = item.value;
+                                    const fieldValue = formatFieldDisplayValue(item.value, 'compact');
                                     const fieldName = item.field;
-                                    if (typeof fieldValue === 'object') {
-                                        fieldValue = JSON.stringify(fieldValue);
-                                    }
                                     const tableRowStyle = css`
                                         &:hover {
                                             .filter-table-content {
@@ -296,7 +226,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                                                         word-break: break-all;
                                                     `}
                                                 >
-                                                    {fieldValue || '-'}
+                                                    {fieldValue}
                                                 </div>
                                             </td>
                                         </tr>
@@ -323,7 +253,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                                     overflow-y: auto;
                                 `}
                             >
-                                {JSON.stringify(processedData, null, 2)}
+                                {formatFieldDisplayValue(processedData, 'pretty')}
                             </pre>
                         </div>
                     )}
@@ -534,12 +464,9 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                         ),
                         cell: ({ row, getValue }: any) => {
                             // let fieldValue = row.original._original[field.Field];
-                            let fieldValue = get(row.original._original, field.Field);
+                            const fieldValue = formatFieldDisplayValue(get(row.original._original, field.Field), 'compact');
                             const fieldName = field.Field;
                             const fieldType = field.Type;
-                            if (typeof fieldValue === 'object') {
-                                fieldValue = JSON.stringify(fieldValue);
-                            }
                             return (
                                 <div
                                     className={`${HoverStyle} ${css`

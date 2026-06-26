@@ -11,7 +11,7 @@ export function SurroundingContentTableActions({ fieldName, fieldValue }: any) {
     // const [selectedSurroundingFields, setSelectedSurroundingFields] = useAtom(surroundingSelectedFieldsAtom);
     const [surroundingDataFilter, setSurroundingDataFilter] = useAtom(surroundingDataFilterAtom);
     const tableFields = useAtomValue(tableFieldsAtom);
-    const fieldType = tableFields.find(field => field.Field === fieldName).Type;
+    const fieldType = tableFields.find(field => field.Field === fieldName)?.Type;
     // const hasField = selectedSurroundingFields.some((item: any) => item.Field === fieldName);
     // const filterValue = typeof fieldValue === 'object' ? JSON.stringify(fieldValue) : fieldValue;
     return (

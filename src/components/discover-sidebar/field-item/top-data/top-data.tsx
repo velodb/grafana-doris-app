@@ -6,25 +6,13 @@ import { get } from 'lodash-es';
 import { nanoid } from 'nanoid';
 import React from 'react';
 import { topDataAtom, tableTotalCountAtom, dataFilterAtom } from 'store/discover';
-import { isComplexType } from 'utils/data';
+import { formatFieldDisplayValue, isComplexType } from 'utils/data';
 interface JsonObject {
     [key: string]: any;
 }
 
 function normalizeTopDataValue(value: any): string {
-    if (value === undefined || value === null) {
-        return '';
-    }
-
-    if (typeof value === 'object') {
-        try {
-            return JSON.stringify(value);
-        } catch {
-            return String(value);
-        }
-    }
-
-    return String(value);
+    return formatFieldDisplayValue(value, 'compact');
 }
 
 function countValueDistribution(jsonArray: JsonObject[], key: string): { [value: string]: number } {

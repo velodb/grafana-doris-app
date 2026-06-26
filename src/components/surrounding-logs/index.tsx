@@ -29,12 +29,13 @@ import {
     beforeTimeFieldPageSizeAtom,
     surroundingDataFilterAtom,
     surroundingSelectedFieldsAtom,
+    tableFieldsAtom,
 } from 'store/discover';
 // import dayjs from 'dayjs';
 import { get, sortBy } from 'lodash-es';
 import { getSurroundingDataService } from 'services/discover';
 import { lastValueFrom } from 'rxjs';
-import { convertColumnToRow, formatTimestampToDateTime } from 'utils/data';
+import { convertColumnToRowViaFieldsType, escapeHtml, formatFieldDisplayValue, formatTimestampToDateTime, parseJsonLikeValue } from 'utils/data';
 import { generateTableDataUID } from 'utils/utils';
 import { SurroundingContentTableActions } from './content/content-table-actions';
 import { logError } from '@grafana/runtime';
@@ -60,6 +61,7 @@ export default function SurroundingLogs() {
     const [afterTimeFieldPageSize, setAfterTimeFieldPageSize] = useAtom(afterTimeFieldPageSizeAtom);
     const [beforeTime, setBeforeTime] = useAtom(beforeTimeAtom);
     const [afterTime, setAfterTime] = useAtom(afterTimeAtom);
+    const tableFields = useAtomValue(tableFieldsAtom);
     const [state, updateState] = useState([
         {
             label: 'Table',
@@ -103,7 +105,7 @@ export default function SurroundingLogs() {
             manual: true,
             onSuccess: async (res: any, params: any) => {
                 if (res.ok) {
-                    const rowsData = convertColumnToRow(res.data.results.getSurroundingData.frames[0]);
+                    const rowsData = convertColumnToRowViaFieldsType(res.data.results.getSurroundingData.frames[0], tableFields);
                     const result = getAfterResultWrap(generateSurroundingResult(rowsData, currentTimeField));
                     let data = [...surroundingTableData];
                     data.push(...result);
@@ -156,7 +158,7 @@ export default function SurroundingLogs() {
             manual: true,
             onSuccess: async (res: any, params: any) => {
                 if (res.ok) {
-                    const rowsData = convertColumnToRow(res.data.results.getSurroundingData.frames[0]);
+                    const rowsData = convertColumnToRowViaFieldsType(res.data.results.getSurroundingData.frames[0], tableFields);
                     const result = generateSurroundingResult(rowsData, currentTimeField);
                     let data = [...surroundingTableData];
                     data.unshift(...result);
@@ -206,8 +208,8 @@ export default function SurroundingLogs() {
             refreshDeps: [surroundingDataFilter],
             onSuccess: async (res: any) => {
                 if (res[0].ok && res[1].ok) {
-                    const rowsData1 = convertColumnToRow(res[0].data.results.getSurroundingData.frames[0]);
-                    const rowsData2 = convertColumnToRow(res[1].data.results.getSurroundingData.frames[0]);
+                    const rowsData1 = convertColumnToRowViaFieldsType(res[0].data.results.getSurroundingData.frames[0], tableFields);
+                    const rowsData2 = convertColumnToRowViaFieldsType(res[1].data.results.getSurroundingData.frames[0], tableFields);
                     const result1 = generateSurroundingResult(rowsData1, currentTimeField);
                     const result2 = getAfterResultWrap(generateSurroundingResult(rowsData2, currentTimeField));
                     const selectedResult = generateSurroundingResult([selectedRow._original], currentTimeField);
@@ -290,74 +292,7 @@ export default function SurroundingLogs() {
     };
 
     const renderSubComponent = ({ row }: { row: Row<any> }) => {
-        // processObject copied/adapted from discover-content to normalize stringified JSON inside fields
-        const processObject = (obj: any): any => {
-            if (typeof obj !== 'object' || obj === null) {
-                return obj;
-            }
-
-            const result: any = {};
-            for (const key in obj) {
-                if (obj.hasOwnProperty(key)) {
-                    let value = obj[key];
-
-                    if (typeof value === 'string') {
-                        let cleanValue = value.trim();
-
-                        // check for escaped double quotes
-                        if (cleanValue.includes('\\"')) {
-                            try {
-                                cleanValue = JSON.parse(`"${cleanValue}"`);
-                            } catch (e) {
-                                // if parsing fails, keep the original value
-                            }
-                        }
-
-                        // check for JSON
-                        if ((cleanValue.startsWith('{') && cleanValue.endsWith('}')) || (cleanValue.startsWith('[') && cleanValue.endsWith(']'))) {
-                            try {
-                                const parsed = JSON.parse(cleanValue);
-                                value = processObject(parsed);
-                            } catch (e) {
-                                value = obj[key];
-                            }
-                        } else {
-                            value = obj[key];
-                        }
-                    } else if (Array.isArray(value)) {
-                        value = value.map(item => {
-                            if (typeof item === 'string') {
-                                let cleanItem = item.trim();
-
-                                if (cleanItem.includes('\\"')) {
-                                    try {
-                                        cleanItem = JSON.parse(`"${cleanItem}"`);
-                                    } catch (e) { }
-                                }
-
-                                if ((cleanItem.startsWith('{') && cleanItem.endsWith('}')) || (cleanItem.startsWith('[') && cleanItem.endsWith(']'))) {
-                                    try {
-                                        const parsed = JSON.parse(cleanItem);
-                                        return processObject(parsed);
-                                    } catch {
-                                        return item;
-                                    }
-                                }
-                                return item;
-                            }
-                            return typeof item === 'object' && item !== null ? processObject(item) : item;
-                        });
-                    } else if (typeof value === 'object' && value !== null) {
-                        value = processObject(value);
-                    }
-
-                    result[key] = value;
-                }
-            }
-            return result;
-        };
-
-        const processedData = processObject(row.original._original);
+        const processedData = parseJsonLikeValue(row.original._original);
 
         const subTableData = Object.keys(processedData).map(key => {
             return {
@@ -401,11 +336,8 @@ export default function SurroundingLogs() {
                         <table className="bg-b1/20 pl-4 backdrop-blur-md dark:bg-n9/60">
                             <tbody>
                                 {subTableData.map((item: any) => {
-                                    let fieldValue = item.value;
+                                    const fieldValue = formatFieldDisplayValue(item.value, 'compact');
                                     const fieldName = item.field;
-                                    if (typeof fieldValue === 'object') {
-                                        fieldValue = JSON.stringify(fieldValue);
-                                    }
                                     const tableRowStyle = css`
                                         &:hover {
                                             .filter-table-content {
@@ -431,7 +363,7 @@ export default function SurroundingLogs() {
                                             </td>
                                             <td className="h-8 text-xs">{fieldName || '-'}</td>
                                             <td className="h-8 whitespace-normal text-xs">
-                                                <div className="w-full break-all">{fieldValue || '-'}</div>
+                                                <div className="w-full break-all">{fieldValue}</div>
                                             </td>
                                         </tr>
                                     );
@@ -457,7 +389,7 @@ export default function SurroundingLogs() {
                                     overflow-y: auto;
                                 `}
                             >
-                                {JSON.stringify(processedData, null, 2)}
+                                {formatFieldDisplayValue(processedData, 'pretty')}
                             </pre>
                         </div>
                     )}
@@ -472,13 +404,9 @@ export default function SurroundingLogs() {
         const _sourceResult = sortedResult.map((item: any) => {
             let itemSource = '';
             for (const key in item) {
-                let highlightValue = item[key];
-                // 兼容 Variant 类型
-                if (typeof highlightValue === 'object') {
-                    highlightValue = JSON.stringify(highlightValue);
-                }
+                const highlightValue = formatFieldDisplayValue(item[key], 'compact');
                 itemSource += `<span style="background-color: ${theme.isDark ? '#3F3F4F' : '#BED8FD'
-                    } ; padding: 0px 4px 2px; margin-right: 4px; border-radius: 4px;">${key}:</span>${highlightValue} `;
+                    } ; padding: 0px 4px 2px; margin-right: 4px; border-radius: 4px;">${escapeHtml(key)}:</span>${escapeHtml(highlightValue)} `;
             }
             return {
                 _original: item,
@@ -613,12 +541,9 @@ export default function SurroundingLogs() {
                         ),
                         cell: ({ row, getValue }: any) => {
                             // let fieldValue = row.original._original[field.Field];
-                            let fieldValue = get(row.original._original, field.Field);
+                            const fieldValue = formatFieldDisplayValue(get(row.original._original, field.Field), 'compact');
                             const fieldName = field.Field;
                             const fieldType = field.Type;
-                            if (typeof fieldValue === 'object') {
-                                fieldValue = JSON.stringify(fieldValue);
-                            }
                             return (
                                 <div
                                     className={`${HoverStyle} ${css`

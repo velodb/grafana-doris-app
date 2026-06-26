@@ -90,6 +90,10 @@ export function FilterContent() {
               value: 'DATE',
               label: 'Date',
             },
+            {
+              value: 'VARIANT',
+              label: 'Variant',
+            },
           ]}
         />
       </div>

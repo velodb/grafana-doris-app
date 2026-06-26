@@ -43,6 +43,84 @@ export const getFieldType = (columnType: string | undefined) => {
     return currentColumnType?.key;
 };
 
+export const isVariantType = (columnType: string | undefined) => {
+    return String(columnType || '').toLocaleUpperCase().includes('VARIANT');
+};
+
+export function parseJsonLikeValue(value: any): any {
+    if (typeof value !== 'string') {
+        if (Array.isArray(value)) {
+            return value.map(item => parseJsonLikeValue(item));
+        }
+        if (value && typeof value === 'object') {
+            return Object.entries(value).reduce<Record<string, any>>((result, [key, item]) => {
+                result[key] = parseJsonLikeValue(item);
+                return result;
+            }, {});
+        }
+        return value;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return value;
+    }
+
+    let normalized = trimmed;
+    if (normalized.includes('\\"')) {
+        try {
+            normalized = JSON.parse(`"${normalized}"`);
+        } catch {
+            normalized = trimmed;
+        }
+    }
+
+    const looksJsonLike =
+        (normalized.startsWith('{') && normalized.endsWith('}')) ||
+        (normalized.startsWith('[') && normalized.endsWith(']')) ||
+        (normalized.startsWith('"') && normalized.endsWith('"'));
+
+    if (!looksJsonLike) {
+        return value;
+    }
+
+    try {
+        return parseJsonLikeValue(JSON.parse(normalized));
+    } catch {
+        return value;
+    }
+}
+
+export function formatFieldDisplayValue(value: any, mode: 'compact' | 'pretty' = 'compact'): string {
+    if (value === null || value === undefined) {
+        return '-';
+    }
+
+    const parsedValue = parseJsonLikeValue(value);
+    if (parsedValue === null || parsedValue === undefined) {
+        return '-';
+    }
+
+    if (typeof parsedValue === 'object') {
+        try {
+            return JSON.stringify(parsedValue, null, mode === 'pretty' ? 2 : 0);
+        } catch {
+            return String(parsedValue);
+        }
+    }
+
+    return String(parsedValue);
+}
+
+export function escapeHtml(value: any): string {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 export const DISCOVER_DEFAULT_STATUS: DiscoverCurrent = {
     catalog: 'internal',
     database: '',
@@ -98,6 +176,7 @@ export enum FieldTypeEnum {
     STRING = 'STRING',
     NUMBER = 'NUMBER',
     DATE = 'DATE',
+    VARIANT = 'VARIANT',
 }
 
 export enum ParamsKeyEnum {
@@ -581,11 +660,9 @@ export function convertColumnToRow(frame: any): Array<Record<string, any>> {
                 // 如果是时间字段，转换为 Dayjs 对象
                 row[fieldNames[j]] = formatTimestampToDateTime(row[fieldNames[j]], frame.schema.fields[j].precision || 3);
             }
-            if (frame.schema.fields[j].type === 'VARIANT') {
+            if (isVariantType(frame.schema.fields[j].type)) {
                 // 如果是 VARIANT 类型，转换为 JSON 对象
-                try {
-                    row[fieldNames[j]] = JSON.parse(row[fieldNames[j]]);
-                } catch { }
+                row[fieldNames[j]] = parseJsonLikeValue(row[fieldNames[j]]);
             }
         }
         rows.push(row);
@@ -617,10 +694,8 @@ export function convertColumnToRowViaFieldsType(frame: any, fields: any): Array<
             }
             const currentFieldInfo = fields.filter((item: any) => item.Field === frame.schema.fields[j].name)[0];
             // 如果是 VARIANT 类型，转换为 JSON 对象
-            if (currentFieldInfo && currentFieldInfo.Type.toUpperCase() === 'VARIANT') {
-                try {
-                    row[fieldNames[j]] = JSON.parse(row[fieldNames[j]]);
-                } catch { }
+            if (currentFieldInfo && isVariantType(currentFieldInfo.Type)) {
+                row[fieldNames[j]] = parseJsonLikeValue(row[fieldNames[j]]);
             }
         }
         rows.push(row);
@@ -815,13 +890,8 @@ export function generateHighlightedResults(data: { search_value: string; indexes
         let itemSource = '';
 
         for (const key in item) {
-            let highlightValue: any = item[key];
-            let itemValue: any = item[key];
-
-            if (typeof highlightValue === 'object') {
-                highlightValue = JSON.stringify(highlightValue);
-                itemValue = JSON.stringify(itemValue);
-            }
+            let highlightValue: any = formatFieldDisplayValue(item[key], 'compact');
+            let itemValue: any = highlightValue;
 
             if (keyword && (searchField(searchTableData, key) || (luceneField && key === luceneField))) {
                 const strValue = typeof itemValue === 'string' ? itemValue : itemValue + '';
@@ -876,10 +946,12 @@ export function generateHighlightedResults(data: { search_value: string; indexes
                 highlightValue = `<a 
                 href="javascript:void(0)" 
                 class="trace-link" 
-                data-trace-id="${traceId}"
-            >${content}</a>`;
+                data-trace-id="${escapeHtml(traceId)}"
+            >${escapeHtml(content)}</a>`;
+            } else {
+                highlightValue = escapeHtml(highlightValue);
             }
-            itemSource += `<span class="field-key">${key}:</span>${highlightValue} `;
+            itemSource += `<span class="field-key">${escapeHtml(key)}:</span>${highlightValue} `;
         }
 
         return {

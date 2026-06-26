@@ -49,8 +49,12 @@ const normalizeColumnType = ({ dataType, columnType }: { dataType?: string; colu
         return source.replace(/^array/i, 'Array');
     }
 
-    if (lower.startsWith('json') || lower.startsWith('variant')) {
+    if (lower.startsWith('json')) {
         return 'JSON';
+    }
+
+    if (lower.startsWith('variant')) {
+        return 'Variant';
     }
 
     if (lower === 'bool' || lower === 'boolean' || lower.startsWith('tinyint(1)')) {
