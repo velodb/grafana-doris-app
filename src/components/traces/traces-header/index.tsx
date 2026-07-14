@@ -314,9 +314,9 @@ export default function TracesHeader() {
             next: ({ data, ok }: any) => {
                 if (ok) {
                     const frame = toDataFrame(data.results.getIndexes.frames[0]);
-                    const values = Array.from(frame.fields[2].values);
-                    const columnNames = Array.from(frame.fields[4].values);
-                    const indexesTypes = Array.from(frame.fields[10].values);
+                    const values = Array.from(frame.fields[2]?.values || []);
+                    const columnNames = Array.from(frame.fields[4]?.values || []);
+                    const indexesTypes = Array.from(frame.fields[10]?.values || []);
 
                     if (!values || values.length === 0) {
                         setIndexes([]);

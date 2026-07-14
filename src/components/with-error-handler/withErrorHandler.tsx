@@ -14,8 +14,56 @@ function showGlobalError(msg: string) {
     });
 }
 
+function getFirstResultError(data: any) {
+    const results = data?.results;
+    if (!results) {
+        return undefined;
+    }
+
+    const refId = Object.keys(results).find(key => results[key]?.error || results[key]?.status >= 400);
+    if (!refId) {
+        return undefined;
+    }
+
+    return {
+        refId,
+        ...results[refId],
+    };
+}
+
 function getErrorText(error: any) {
-    return error?.data?.results[Object.keys(error?.data?.results)?.[0]]?.error || error.statusText || 'Request failed';
+    const responseData = error?.data || error?.response?.data;
+    const resultError = getFirstResultError(responseData);
+
+    return (
+        error?.backendError ||
+        resultError?.error ||
+        responseData?.error?.message ||
+        responseData?.message ||
+        error?.statusText ||
+        error?.message ||
+        'Request failed'
+    );
+}
+
+function createBackendError(res: any, defaultMessage: string) {
+    const resultError = getFirstResultError(res?.data);
+    const err = new Error(getErrorText({
+        data: res?.data,
+        statusText: res?.statusText,
+        message: defaultMessage,
+    })) as any;
+
+    err.name = 'BackendQueryError';
+    err.data = res?.data;
+    err.status = res?.status;
+    err.statusText = res?.statusText;
+    err.backendError = resultError?.error;
+    err.backendStatus = resultError?.status;
+    err.errorSource = resultError?.errorSource;
+    err.refId = resultError?.refId;
+
+    return err;
 }
 
 export function withErrorHandler<T>(
@@ -32,17 +80,9 @@ export function withErrorHandler<T>(
 
     return source$.pipe(
         map((res: any) => {
-            if (res?.ok === false) {
-                const errMsg =
-                    res?.data?.error?.message ||
-                    res?.data?.message ||
-                    defaultMessage;
-
-                if (showBackendError) {
-                    showGlobalError(getErrorText(res?.data?.error));
-                }
-
-                throw new Error(errMsg);
+            const resultError = getFirstResultError(res?.data);
+            if (res?.ok === false || resultError) {
+                throw createBackendError(res, defaultMessage);
             }
 
             return res;
