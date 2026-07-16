@@ -69,7 +69,7 @@ function parseDuration(input?: string): number {
   return Number.isFinite(numericDuration) ? numericDuration : 0;
 }
 
-function tagsToDorisSQLConditions(tags?: string): string {
+function tagsToDorisSQLConditions(tags?: string, tableAlias?: string): string {
   if (!tags) {
     return '1=1';
   }
@@ -80,10 +80,145 @@ function tagsToDorisSQLConditions(tags?: string): string {
     while ((match = regex.exec(tags)) !== null) {
         const key = match[1];
         const val = match[2] || match[3] || match[4];
-        conditions.push(`span_attributes['${key}'] = '${val}'`);
+        const spanAttributes = tableAlias ? `${tableAlias}.span_attributes` : 'span_attributes';
+        conditions.push(`${spanAttributes}['${key}'] = '${val}'`);
     }
 
   return conditions.length > 0 ? conditions.join(' AND ') : '1=1';
+}
+
+function buildMostRecentTraceAggSQL(
+  params: QueryTracesParams,
+  limit: number,
+  offset: number,
+  durationFilter: string,
+): string {
+  const rootFilters = ['root_rank = 1'];
+  if (params.service_name && params.service_name !== 'all') {
+    rootFilters.push(`root_service = '${params.service_name}'`);
+  }
+  if (params.operation && params.operation !== 'all') {
+    rootFilters.push(`operation = '${params.operation}'`);
+  }
+
+  const extendedTimeFilter = (alias: string) =>
+    `${alias}.${params.timeField} >= '${params.startDate}' - INTERVAL 2 DAY
+      AND ${alias}.${params.timeField} < '${params.endDate}' + INTERVAL 2 DAY`;
+
+  const optionalCtes: string[] = [];
+  const eligibilityJoins: string[] = [];
+  const eligibilityFilters: string[] = ['1=1'];
+
+  if (params.statusCode && params.statusCode !== 'all') {
+    optionalCtes.push(`status_trace_ids AS (
+    SELECT DISTINCT t.trace_id
+    FROM ${params.table} t
+    JOIN selected_roots r ON t.trace_id = r.trace_id
+    WHERE ${extendedTimeFilter('t')}
+      AND t.status_code = '${params.statusCode}'
+  )`);
+    eligibilityJoins.push('JOIN status_trace_ids s ON r.trace_id = s.trace_id');
+  }
+
+  if (params.tags) {
+    optionalCtes.push(`tag_trace_ids AS (
+    SELECT DISTINCT t.trace_id
+    FROM ${params.table} t
+    JOIN selected_roots r ON t.trace_id = r.trace_id
+    WHERE ${extendedTimeFilter('t')}
+      AND ${tagsToDorisSQLConditions(params.tags, 't')}
+  )`);
+    eligibilityJoins.push('JOIN tag_trace_ids g ON r.trace_id = g.trace_id');
+  }
+
+  if (durationFilter !== '1=1') {
+    optionalCtes.push(`trace_durations AS (
+    SELECT
+      t.trace_id,
+      MAX(UNIX_TIMESTAMP(t.${params.timeField}) * 1000 + t.duration / 1000)
+        - MIN(UNIX_TIMESTAMP(t.${params.timeField}) * 1000) AS trace_duration_ms
+    FROM ${params.table} t
+    JOIN selected_roots r ON t.trace_id = r.trace_id
+    WHERE ${extendedTimeFilter('t')}
+    GROUP BY t.trace_id
+  )`);
+    eligibilityJoins.push('JOIN trace_durations d ON r.trace_id = d.trace_id');
+    eligibilityFilters.push(durationFilter.replace(/trace_duration_ms/g, 'd.trace_duration_ms'));
+  }
+
+  const ctes = [
+    `root_span_candidates AS (
+    SELECT
+      trace_id,
+      ${params.timeField} AS root_time,
+      span_name AS operation,
+      service_name AS root_service,
+      duration AS root_duration,
+      ROW_NUMBER() OVER (
+        PARTITION BY trace_id
+        ORDER BY ${params.timeField} ASC, span_id ASC
+      ) AS root_rank
+    FROM ${params.table}
+    WHERE ${params.timeField} >= '${params.startDate}'
+      AND ${params.timeField} < '${params.endDate}'
+      AND (parent_span_id IS NULL OR parent_span_id = '')
+  )`,
+    `selected_roots AS (
+    SELECT trace_id, root_time, operation, root_service, root_duration
+    FROM root_span_candidates
+    WHERE ${rootFilters.join('\n      AND ')}
+  )`,
+    ...optionalCtes,
+    `eligible_roots AS (
+    SELECT r.*
+    FROM selected_roots r
+    ${eligibilityJoins.join('\n    ')}
+    WHERE ${eligibilityFilters.join('\n      AND ')}
+  )`,
+    `counted_roots AS (
+    SELECT r.*, COUNT(*) OVER() AS total_count
+    FROM eligible_roots r
+  )`,
+    `page_root_spans AS (
+    SELECT *
+    FROM counted_roots
+    ORDER BY root_time DESC, trace_id DESC
+    LIMIT ${limit} OFFSET ${offset}
+  )`,
+  ];
+
+  return `
+USE ${params.database};
+
+WITH
+  ${ctes.join(',\n  ')}
+
+SELECT
+  UNIX_TIMESTAMP(p.root_time) AS time,
+  t.trace_id,
+  p.operation,
+  p.root_service,
+  COLLECT_SET(t.service_name) AS services,
+  COUNT(*) AS spans,
+  SUM(IF(t.status_code IN ('STATUS_CODE_ERROR', 'ERROR'), 1, 0)) AS error_spans,
+  MAX(t.duration) / 1000 AS max_span_duration_ms,
+  MAX(UNIX_TIMESTAMP(t.${params.timeField}) * 1000 + t.duration / 1000)
+    - MIN(UNIX_TIMESTAMP(t.${params.timeField}) * 1000) AS trace_duration_ms,
+  p.root_duration / 1000 AS root_span_duration_ms,
+  p.total_count,
+  p.total_count AS total
+FROM ${params.table} t
+JOIN page_root_spans p ON t.trace_id = p.trace_id
+WHERE ${extendedTimeFilter('t')}
+GROUP BY
+  p.root_time,
+  t.trace_id,
+  p.operation,
+  p.root_service,
+  p.root_duration,
+  p.total_count
+ORDER BY p.root_time DESC, t.trace_id DESC;
+`;
 }
 
 export function buildTraceAggSQLFromParams(params: QueryTracesParams): string {
@@ -119,6 +254,10 @@ export function buildTraceAggSQLFromParams(params: QueryTracesParams): string {
 
   const limit = params.page_size ?? 1000;
   const offset = Math.max(((params.page ?? 1) - 1) * limit, 0);
+
+  if (!params.sortBy || params.sortBy === 'most-recent') {
+    return buildMostRecentTraceAggSQL(params, limit, offset, durationFilter);
+  }
 
   let rowNumberOrderBy = 'time DESC';
   switch (params.sortBy) {

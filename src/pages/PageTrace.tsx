@@ -162,7 +162,7 @@ export default function PageTrace() {
         );
     }, [configuredTraceTable, currentDatabase, currentTable, hasExplicitTraceTableConfig, showTraceError, showTraceSetupError]);
 
-    const getTraces = React.useCallback((nextPage = page) => {
+    const getTraces = React.useCallback((nextPage = page, nextSort = sort) => {
         if (showTraceSetupError('query traces')) {
             return;
         }
@@ -179,7 +179,7 @@ export default function PageTrace() {
             page_size: pageSize,
             service_name: currentService.value,
             operation: currentOperation.value,
-            sortBy: sort, // 'most-recent' | 'longest-duration'
+            sortBy: nextSort, // 'most-recent' | 'longest-duration'
         };
 
         if (minDuration) {
@@ -482,7 +482,7 @@ export default function PageTrace() {
                         `}
                     >
                         {loading && <LoadingBar width={100} />}
-                        <TraceView traces={traces} />
+                        <TraceView traces={traces} onSortByChange={(nextSort: string) => getTraces(1, nextSort)} />
                     </main>
                 </div>
             </PluginPage>

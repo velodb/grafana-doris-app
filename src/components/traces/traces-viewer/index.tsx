@@ -134,7 +134,7 @@ export const TraceView: React.FC<any> = React.memo(({ traces: propTraces, onSort
                         onChange={option => {
                             setPage(1);
                             setSort(option.value);
-                            onSortByChange(option.value);
+                            onSortByChange?.(option.value);
                         }}
                     />
                 </div>
