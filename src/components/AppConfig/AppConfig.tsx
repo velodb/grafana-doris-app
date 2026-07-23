@@ -49,6 +49,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
   const [teams, setTeams] = useState<GrafanaTeam[]>([]);
   const [databases, setDatabases] = useAtom(settingDatabasesAtom);
   const [tables, setTables] = useAtom(settingTablesAtom);
+  const applicationAttributeKey = currentLogsConfig.applicationAttributeKey?.trim() || '';
 
   const isSubmitDisabled = Boolean(!state.apiUrl || (!state.isApiKeySet && !state.apiKey));
   const resolveDatasource = React.useCallback((ds: any) => {
@@ -191,13 +192,19 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
   };
 
   const submitLogConfig = () => {
+    if (!applicationAttributeKey) {
+      return;
+    }
     updatePluginAndReload(plugin.meta.id, {
       enabled,
       pinned,
       jsonData: {
         ...jsonData,
         apiUrl: state.apiUrl,
-        logsConfig: { ...currentLogsConfig },
+        logsConfig: {
+          ...currentLogsConfig,
+          applicationAttributeKey,
+        },
         teamDatasourcePermissions: teamDatasourcePermissions.filter(permission => permission.teamId > 0)
       },
       // This cannot be queried later by the frontend.
@@ -336,6 +343,25 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
               }}
             />
           </Field>
+          <Field
+            label="Application resource attribute key"
+            description="Resource attribute used by the Discover Application filter, for example app or k8s.pod.label.app."
+            invalid={!applicationAttributeKey}
+            error={!applicationAttributeKey ? 'Application resource attribute key is required' : undefined}
+          >
+            <Input
+              width={60}
+              data-testid={testIds.appConfig.applicationAttributeKey}
+              value={currentLogsConfig.applicationAttributeKey || ''}
+              placeholder="app"
+              onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                setCurrentLogsConfig({
+                  ...currentLogsConfig,
+                  applicationAttributeKey: event.target.value,
+                });
+              }}
+            />
+          </Field>
           <Field label="Team Datasource Permissions" description="Users with no teams can view all MySQL datasources. Users in teams can only view datasources configured here.">
             <div>
               {teamDatasourcePermissions.map((permission, index) => {
@@ -382,7 +408,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
             </div>
           </Field>
           <div className={s.marginTop}>
-            <Button type='submit'>
+            <Button type='submit' disabled={!applicationAttributeKey}>
               Save plugin settings
             </Button>
           </div>

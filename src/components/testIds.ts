@@ -2,6 +2,7 @@ export const testIds = {
   appConfig: {
     apiKey: 'data-testid ac-api-key',
     apiUrl: 'data-testid ac-api-url',
+    applicationAttributeKey: 'data-testid application-attribute-key',
     submit: 'data-testid ac-submit-form',
   },
   pageOne: {

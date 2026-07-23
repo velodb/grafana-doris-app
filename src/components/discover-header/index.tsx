@@ -7,7 +7,7 @@ import SQLSearch from './sql-search';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { DataSourcePicker, getDataSourceSrv, logError } from '@grafana/runtime';
 import { css } from '@emotion/css';
-import { TimeZone, dateTime, usePluginContext, toDataFrame } from '@grafana/data';
+import { SelectableValue, TimeZone, dateTime, usePluginContext, toDataFrame } from '@grafana/data';
 import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
 import {
     indexesAtom,
@@ -30,10 +30,11 @@ import {
     databasesAtom,
     tablesAtom,
     currentTableAtom,
+    dataFilterAtom,
 } from 'store/discover';
 import { DISCOVER_SHORTCUTS, getLatestTime, isValidTimeFieldType } from 'utils/data';
 import { Select, Field, Button, useTheme2, TimeRangeInput } from '@grafana/ui';
-import { getDatabases, getFieldsService, getIndexesService, getTablesService } from 'services/metaservice';
+import { getApplicationValuesService, getDatabases, getFieldsService, getIndexesService, getTablesService } from 'services/metaservice';
 import { Subscription } from 'rxjs';
 import Lucene from './lucene';
 import { toError } from 'utils/errors';
@@ -46,6 +47,12 @@ import {
     parseTimeInZone,
     toDayjsRange,
 } from 'utils/time';
+import {
+    APPLICATION_FILTER_ID,
+    applyApplicationFilter,
+    getCommittedApplication,
+    getConfiguredApplicationAttributeKey,
+} from './application-filter';
 
 function getStoredValue<T>(key: string): T | undefined {
     if (typeof window === 'undefined') {
@@ -144,6 +151,7 @@ export default function DiscoverHeader(
         loading: boolean;
     },
 ) {
+    const { loading, onQuerying } = props;
     // const catalog = 'internal';
     // const catalogs = useAtomValue(catalogAtom);
     const setIndexes = useSetAtom(indexesAtom);
@@ -154,8 +162,7 @@ export default function DiscoverHeader(
     }
     const [loc, setLoc] = useAtom(locationAtom);
     // const [currentCluster, setCurrentCluster] = useAtom(currentClusterAtom);
-    // const setTableFields = useSetAtom(tableFieldsAtom);
-    const setTableFields = useSetAtom(tableFieldsAtom);
+    const [tableFields, setTableFields] = useAtom(tableFieldsAtom);
     const [timeFields, setTimeFields] = useAtom(timeFieldsAtom);
     const [_currentDate, setCurrentDate] = useAtom(currentDateAtom);
     const currentTimeField = useAtomValue(currentTimeFieldAtom);
@@ -177,13 +184,23 @@ export default function DiscoverHeader(
     const [_datasources] = useAtom(datasourcesAtom);
     const [searchValue, setSearchValue] = useAtom(searchValueAtom);
     const [timeZone, setTimeZone] = useAtom(timeZoneAtom);
+    const [dataFilter, setDataFilter] = useAtom(dataFilterAtom);
+    const [applicationDraft, setApplicationDraft] = React.useState('');
+    const [applicationOptions, setApplicationOptions] = React.useState<Array<SelectableValue<string>>>([]);
+    const [applicationOptionsLoading, setApplicationOptionsLoading] = React.useState(false);
+    const [resolvedFieldsContext, setResolvedFieldsContext] = React.useState('');
     const searchMode = searchType === 'Search';
 
     const selectdbDS = useAtomValue(selectedDatasourceAtom);
     const theme = useTheme2();
     const context = usePluginContext();
     const jsonData = context.meta.jsonData || {};
-    const logsConfig = mergeLogsConfig((jsonData as AppPluginSettings).logsConfig);
+    const configuredLogsConfig = (jsonData as AppPluginSettings).logsConfig;
+    const logsConfig = mergeLogsConfig(configuredLogsConfig);
+    const applicationAttributeKey = getConfiguredApplicationAttributeKey(
+        configuredLogsConfig?.applicationAttributeKey,
+    );
+    const isApplicationFilterConfigured = Boolean(applicationAttributeKey);
     const {
         allowedDatasources,
         allowedDatasourceUids,
@@ -192,6 +209,40 @@ export default function DiscoverHeader(
     } = useDatasourcePermissions((jsonData as AppPluginSettings).teamDatasourcePermissions, 'DiscoverHeader');
     const hasInitializedUrlSyncRef = React.useRef(false);
     const locSearch = loc?.searchParams?.toString() ?? '';
+    const fieldsContext = `${selectdbDS?.uid || ''}\u0000${discoverCurrent.database}\u0000${currentTable}`;
+    const hasResourceAttributes =
+        isApplicationFilterConfigured &&
+        resolvedFieldsContext === fieldsContext &&
+        tableFields.some((field: any) => field?.Field === 'resource_attributes');
+    const committedApplication = getCommittedApplication(dataFilter, applicationAttributeKey);
+    const applicationStartDate = _currentDate[0] ? formatTimeInZone(_currentDate[0], timeZone) : '';
+    const applicationEndDate = _currentDate[1] ? formatTimeInZone(_currentDate[1], timeZone) : '';
+    const visibleApplicationOptions = React.useMemo(() => {
+        if (!applicationDraft || applicationOptions.some(option => option.value === applicationDraft)) {
+            return applicationOptions;
+        }
+
+        return [{ label: applicationDraft, value: applicationDraft }, ...applicationOptions];
+    }, [applicationDraft, applicationOptions]);
+
+    const resetApplicationFilter = React.useCallback(() => {
+        setApplicationDraft('');
+        setDataFilter(current => {
+            const next = current.filter(filter => filter.id !== APPLICATION_FILTER_ID);
+            return next.length === current.length ? current : next;
+        });
+        setApplicationOptions([]);
+        setResolvedFieldsContext('');
+    }, [setDataFilter]);
+
+    const commitApplicationAndQuery = React.useCallback(() => {
+        const result = applyApplicationFilter(dataFilter, applicationDraft, applicationAttributeKey);
+        if (!result.changed) {
+            onQuerying();
+            return;
+        }
+        setDataFilter(result.filters);
+    }, [applicationAttributeKey, applicationDraft, dataFilter, onQuerying, setDataFilter]);
 
     const applyAbsoluteTimeRange = React.useCallback(
         (start: dayjs.Dayjs, end: dayjs.Dayjs) => {
@@ -276,6 +327,8 @@ export default function DiscoverHeader(
             return;
         }
 
+        setResolvedFieldsContext('');
+
         getFieldsService({
             selectdbDS: effectiveDatasource,
             database: effectiveDatabase,
@@ -297,6 +350,7 @@ export default function DiscoverHeader(
                     });
 
                     setTableFields(tableFields);
+                    setResolvedFieldsContext(`${effectiveDatasource.uid || ''}\u0000${effectiveDatabase}\u0000${selectedTable.value}`);
 
                     if (values) {
                         const options = values
@@ -590,6 +644,77 @@ export default function DiscoverHeader(
         });
     }, [currentTable, currentTimeField, _currentDate, discoverCurrent.database, discoverCurrent.table, locSearch, searchType, searchValue, selectedDatasource, timeRange?.raw, timeZone, updateShareParams]);
 
+    useEffect(() => {
+        setApplicationDraft(committedApplication);
+    }, [committedApplication]);
+
+    useEffect(() => {
+        if (
+            !hasResourceAttributes ||
+            !selectdbDS ||
+            !discoverCurrent.database ||
+            !currentTable ||
+            !currentTimeField ||
+            !applicationStartDate ||
+            !applicationEndDate
+        ) {
+            setApplicationOptions([]);
+            setApplicationOptionsLoading(false);
+            return;
+        }
+
+        setApplicationOptionsLoading(true);
+        const subscription = getApplicationValuesService({
+            selectdbDS,
+            database: discoverCurrent.database,
+            table: currentTable,
+            timeField: currentTimeField,
+            startDate: applicationStartDate,
+            endDate: applicationEndDate,
+            attributeKey: applicationAttributeKey,
+        }).subscribe({
+            next: ({ data, ok }: any) => {
+                setApplicationOptionsLoading(false);
+                if (!ok) {
+                    setApplicationOptions([]);
+                    return;
+                }
+
+                const frame = data?.results?.getApplicationValues?.frames?.[0];
+                if (!frame) {
+                    setApplicationOptions([]);
+                    return;
+                }
+
+                const dataFrame = toDataFrame(frame);
+                const values = Array.from(dataFrame.fields[0]?.values || []);
+                const uniqueValues = new Set<string>();
+                values.forEach(value => {
+                    if (value != null && String(value).trim()) {
+                        uniqueValues.add(String(value));
+                    }
+                });
+                setApplicationOptions(Array.from(uniqueValues, value => ({ label: value, value })));
+            },
+            error: (error: any) => {
+                setApplicationOptionsLoading(false);
+                setApplicationOptions([]);
+                logError(toError(error), { source: 'DiscoverHeader', action: 'getApplicationValues' });
+            },
+        });
+
+        return () => subscription.unsubscribe();
+    }, [
+        applicationAttributeKey,
+        applicationEndDate,
+        applicationStartDate,
+        currentTable,
+        currentTimeField,
+        discoverCurrent.database,
+        hasResourceAttributes,
+        selectdbDS,
+    ]);
+
     return (
         <div
             className={css`
@@ -607,7 +732,7 @@ export default function DiscoverHeader(
                 >
                     {/* filter 这个版本无效 */}
                     <DataSourcePicker
-                         width={20}
+                         width={15}
                          type={'mysql'}
                          current={selectedDatasource}
                          placeholder="Choose"
@@ -619,6 +744,7 @@ export default function DiscoverHeader(
                              if (!allowedDatasourceUids.has(item.uid)) {
                                  return;
                              }
+                             resetApplicationFilter();
                              setSelectedDatasource(item);
                              // Always fetch databases even if the same datasource is selected
                              fetchDatabases(item);
@@ -632,6 +758,7 @@ export default function DiscoverHeader(
                         options={databases}
                         value={discoverCurrent.database}
                         onChange={(selectedDatabase: any) => {
+                            resetApplicationFilter();
                             setDiscoverCurrent({
                                 ...discoverCurrent,
                                 database: selectedDatabase.value,
@@ -661,6 +788,7 @@ export default function DiscoverHeader(
                         width={15}
                         value={currentTable}
                         onChange={(selectedTable: any) => {
+                            resetApplicationFilter();
                             setDiscoverCurrent({
                                 ...discoverCurrent,
                                 table: selectedTable.value,
@@ -671,20 +799,34 @@ export default function DiscoverHeader(
                         }}
                     />
                 </Field>
+                {isApplicationFilterConfigured ? (
+                    <Field label="Application" style={{ marginLeft: 8 }}>
+                        <Select
+                            options={visibleApplicationOptions}
+                            width={14}
+                            value={applicationDraft || undefined}
+                            placeholder={hasResourceAttributes ? 'All' : 'Unavailable'}
+                            isClearable={true}
+                            isLoading={applicationOptionsLoading}
+                            disabled={!hasResourceAttributes}
+                            onChange={(selectedApplication: SelectableValue<string>) => {
+                                setApplicationDraft(selectedApplication?.value || '');
+                            }}
+                        />
+                    </Field>
+                ) : null}
                 <Field label="Mode" style={{ marginLeft: 8, marginRight: 8, width: '120px' }}>
                     <SearchType />
                 </Field>
                 {searchType === 'Lucene' ? (
                     <Field label="Lucene" style={{ width: '100%' }}>
-                        <Lucene onQuerying={() => props?.onQuerying()} />
+                        <Lucene onQuerying={commitApplicationAndQuery} />
                     </Field>
                 ) : (
                     <Field label={searchMode ? 'Search' : 'SQL'} style={{ width: '100%' }}>
                         <SQLSearch
                             style={{ flex: '1' }}
-                            onQuerying={() => {
-                                props?.onQuerying();
-                            }}
+                            onQuerying={commitApplicationAndQuery}
                         />
                     </Field>
                 )}
@@ -792,11 +934,11 @@ export default function DiscoverHeader(
                                 raw: rawFrom && rawTo ? { from: rawFrom, to: rawTo } : buildAbsoluteTimeRange(dayjs(latestStartTime), dayjs(latestEndTime)).raw,
                             }));
                         }
-                        props?.onQuerying();
+                        commitApplicationAndQuery();
                     }}
                     variant="primary"
                     className="h-8"
-                    icon={props?.loading ? 'fa fa-spinner' : 'sync'}
+                    icon={loading ? 'fa fa-spinner' : 'sync'}
                     disabled={!currentTimeField}
                 >
                     {`Query`}

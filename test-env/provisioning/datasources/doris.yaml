@@ -1,0 +1,23 @@
+apiVersion: 1
+
+deleteDatasources:
+  - name: Doris Test
+    orgId: 1
+
+datasources:
+  - name: Doris Test
+    uid: doris-test
+    type: mysql
+    access: proxy
+    url: doris:9030
+    user: root
+    database: otel
+    isDefault: true
+    editable: true
+    jsonData:
+      maxOpenConns: 20
+      maxIdleConns: 5
+      connMaxLifetime: 14400
+      timezone: Asia/Shanghai
+    secureJsonData:
+      password: ""

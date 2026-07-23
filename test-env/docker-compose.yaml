@@ -1,0 +1,98 @@
+name: grafana-doris-app-test
+
+services:
+  doris:
+    image: apache/doris:4.0.3-all-slim
+    container_name: velodb-doris-app-test
+    restart: unless-stopped
+    environment:
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+      ALL_PROXY: ""
+      all_proxy: ""
+      NO_PROXY: "*"
+      no_proxy: "*"
+      # The all-in-one image performs host-level swap/vm.max_map_count checks.
+      # Docker Desktop does not expose those host settings to Compose, and this
+      # small local dataset does not need production kernel tuning.
+      SKIP_CHECK_ULIMIT: "true"
+    ports:
+      - "${DORIS_HTTP_PORT:-18030}:8030"
+      - "${DORIS_MYSQL_PORT:-19030}:9030"
+    volumes:
+      - doris-fe-meta:/opt/apache-doris/fe/doris-meta
+      - doris-be-storage:/opt/apache-doris/be/storage
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h127.0.0.1 -P9030 -uroot -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+
+  doris-init:
+    image: apache/doris:4.0.3-all-slim
+    container_name: velodb-doris-app-test-init
+    entrypoint: ["/bin/bash", "-c"]
+    environment:
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+      ALL_PROXY: ""
+      all_proxy: ""
+      NO_PROXY: "*"
+      no_proxy: "*"
+    command:
+      - mysql -hdoris -P9030 -uroot --comments < /test-env/init.sql
+    volumes:
+      - ./init.sql:/test-env/init.sql:ro
+    depends_on:
+      doris:
+        condition: service_healthy
+    restart: "no"
+
+  grafana:
+    container_name: velodb-grafana-app-test
+    build:
+      context: ../.config
+      args:
+        grafana_image: ${GRAFANA_IMAGE:-grafana-enterprise}
+        grafana_version: ${GRAFANA_VERSION:-latest}
+        development: "false"
+        anonymous_auth_enabled: "false"
+    ports:
+      - "${GRAFANA_PORT:-3003}:3000"
+    environment:
+      NODE_ENV: development
+      GF_LOG_LEVEL: info
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: velodb-doris-app
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_PLUGINS_PREINSTALL_AUTO_UPDATE: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_BASIC_ENABLED: "true"
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ../dist:/var/lib/grafana/plugins/velodb-doris-app:ro
+      - ./provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      doris-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy wget -q -O - http://127.0.0.1:3000/api/health >/dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  doris-fe-meta:
+  doris-be-storage:

@@ -2,7 +2,8 @@ import { getAutoInterval } from '../constants';
 import dayjs, { Dayjs, ManipulateType } from 'dayjs';
 import { flatten, orderBy, some } from 'lodash-es';
 import { nanoid } from 'nanoid';
-import { DiscoverCurrent, DataFilterType, AutoInterval, IntervalEnum } from 'types/type';
+import { DiscoverCurrent, AutoInterval, IntervalEnum } from 'types/type';
+export { addSqlFilter, getFilterSQL } from './sql-filter';
 import jsTokens from 'js-tokens';
 import localeData from 'dayjs/plugin/localeData';
 import { DataFrame, FieldType } from '@grafana/data';
@@ -194,56 +195,6 @@ export enum ParamsKeyEnum {
     searchType = 'searchType',
     selectedIndex = 'selectedIndex',
     selectedCluster = 'selectedCluster',
-}
-
-export function getFilterSQL({ fieldName, operator, value }: DataFilterType): string {
-    const valueString = value.map((e: any) => {
-        if (typeof e === 'string') {
-            return `'${e}'`;
-        } else {
-            return e;
-        }
-    });
-
-    if (
-        operator === '=' ||
-        operator === '!=' ||
-        operator === 'like' ||
-        operator === 'not like' ||
-        operator === 'match_all' ||
-        operator === 'match_any' ||
-        operator === 'match_phrase' ||
-        operator === 'match_phrase_prefix'
-    ) {
-        return `\`${fieldName}\` ${operator} ${valueString[0]}`;
-    }
-
-    if (operator === 'is null' || operator === 'is not null') {
-        return `\`${fieldName}\` ${operator}`;
-    }
-
-    if (operator === 'between' || operator === 'not between') {
-        return `\`${fieldName}\` ${operator} ${valueString[0]} AND ${valueString[1]}`;
-    }
-
-    if (operator === 'in' || operator === 'not in') {
-        return `\`${fieldName}\` ${operator} (${valueString})`;
-    }
-
-    return '';
-}
-
-export function addSqlFilter(sql: string, dataFilterValue: DataFilterType): string {
-    let result = sql;
-    if (!sql.toUpperCase().includes('WHERE')) {
-        result += ' WHERE';
-    } else {
-        result += ' AND';
-    }
-
-    result += ` (${getFilterSQL(dataFilterValue)})`;
-
-    return result;
 }
 
 function isWrappedInQuotes(inputString: string): boolean {

@@ -204,6 +204,7 @@ export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void;
         const newItem = {
             id,
             fieldName: field.value,
+            variantKey: field.value === dataFilterValue?.fieldName ? dataFilterValue?.variantKey : undefined,
             operator: opValue,
             // Only persist label when showLabel is true. Otherwise ensure it's empty.
             label: showLabel ? label : '',

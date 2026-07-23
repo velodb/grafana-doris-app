@@ -8,12 +8,14 @@ const PageDashboard = React.lazy(() => import('../../pages/PageDashboard'));
 
 function App(_props: AppRootProps) {
     return (
-        <Routes>
-            <Route path={ROUTES.Discover} element={<Discover />} />
-            <Route path={`${ROUTES.Traces}`} element={<PageTrace />} />
-            <Route path={`${ROUTES.Dashboard}`} element={<PageDashboard />} />
-            <Route path="*" element={<Discover />} />
-        </Routes>
+        <React.Suspense fallback={null}>
+            <Routes>
+                <Route path={ROUTES.Discover} element={<Discover />} />
+                <Route path={`${ROUTES.Traces}`} element={<PageTrace />} />
+                <Route path={`${ROUTES.Dashboard}`} element={<PageDashboard />} />
+                <Route path="*" element={<Discover />} />
+            </Routes>
+        </React.Suspense>
     );
 }
 

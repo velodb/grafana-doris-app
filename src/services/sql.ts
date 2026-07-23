@@ -1,4 +1,7 @@
-import { QueryTableDataParams, DataFilterType, SurroundingParams } from 'types/type';
+import { QueryTableDataParams, SurroundingParams } from 'types/type';
+import { addSqlFilter } from 'utils/sql-filter';
+
+export { addSqlFilter, getFilterSQL, transformFieldPath } from 'utils/sql-filter';
 
 export function getQueryTableResultSQL(params: QueryTableDataParams) {
     const indexesStatement = params.indexes_statement;
@@ -90,67 +93,4 @@ export function getSurroundingSQL(params: SurroundingParams) {
     const orderSymbol = params.operator === '<' ? 'DESC' : 'ASC';
     statement = statement + ` ` + `ORDER BY \`${params.timeField}\` ${orderSymbol} LIMIT ${+params.pageSize}`;
     return statement;
-}
-
-export function getFilterSQL({ fieldName, operator, value }: DataFilterType): string {
-    const valueString = value.map(e => {
-        if (typeof e === 'string') {
-            return `'${e}'`;
-        } else {
-            return e;
-        }
-    });
-
-    const transformedFieldName = transformFieldPath(fieldName);
-
-    if (
-        operator === '=' ||
-        operator === '!=' ||
-        operator === 'like' ||
-        operator === 'not like' ||
-        operator === 'match_all' ||
-        operator === 'match_any' ||
-        operator === 'match_phrase' ||
-        operator === 'match_phrase_prefix'
-    ) {
-        return `${transformedFieldName} ${operator} ${valueString[0]}`;
-    }
-
-    if (operator === 'is null' || operator === 'is not null') {
-        return `${transformedFieldName} ${operator}`;
-    }
-
-    if (operator === 'between' || operator === 'not between') {
-        return `${transformedFieldName} ${operator} ${valueString[0]} AND ${valueString[1]}`;
-    }
-
-    if (operator === 'in' || operator === 'not in') {
-        return `${transformedFieldName} ${operator} ('${valueString}')`;
-    }
-
-    return '';
-}
-
-export function addSqlFilter(sql: string, dataFilterValue: DataFilterType): string {
-    let result = sql;
-    if (!sql.toUpperCase().includes('WHERE')) {
-        result += ' WHERE';
-    } else {
-        result += ' AND';
-    }
-
-    result += ` (${getFilterSQL(dataFilterValue)})`;
-
-    return result;
-}
-
-export function transformFieldPath(fieldPath: string): string {
-    const parts = fieldPath.split('.');
-    return (
-        parts[0] +
-        parts
-            .slice(1)
-            .map(part => `['${part}']`)
-            .join('')
-    );
 }

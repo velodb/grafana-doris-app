@@ -3,6 +3,7 @@ import { getBackendSrv, logError } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import { withErrorHandler } from 'components/with-error-handler/withErrorHandler';
 import { toError } from 'utils/errors';
+import { escapeSqlIdentifier, quoteSqlLiteral } from 'utils/sql-filter';
 
 type GetColumnParams = {
     connectionId: string;
@@ -23,6 +24,16 @@ type GetIndexesParams = {
     database: string;
     table: string;
     datasourceType?: string;
+};
+
+export type GetApplicationValuesParams = {
+    selectdbDS: any;
+    database: string;
+    table: string;
+    timeField: string;
+    startDate: string;
+    endDate: string;
+    attributeKey: string;
 };
 
 const escapeSqlLiteral = (value: string) => value.replace(/'/g, "''");
@@ -337,6 +348,48 @@ export function getFieldsService({ selectdbDS, database, table }: { selectdbDS: 
                     refId: 'getFields',
                     datasource: { type: 'mysql', uid: selectdbDS.uid },
                     rawSql: `SHOW COLUMNS FROM \`${database}\`.\`${table}\``,
+                    format: 'table',
+                },
+            ],
+        },
+    }));
+}
+
+export function getApplicationValuesSQL({
+    database,
+    table,
+    timeField,
+    startDate,
+    endDate,
+    attributeKey,
+}: Omit<GetApplicationValuesParams, 'selectdbDS'>): string {
+    const resourceAttributes = escapeSqlIdentifier('resource_attributes');
+    const applicationExpression = `CAST(${resourceAttributes}[${quoteSqlLiteral(attributeKey)}] AS STRING)`;
+
+    return `
+SELECT ${applicationExpression} AS application
+FROM ${escapeSqlIdentifier(database)}.${escapeSqlIdentifier(table)}
+WHERE ${escapeSqlIdentifier(timeField)} BETWEEN ${quoteSqlLiteral(startDate)} AND ${quoteSqlLiteral(endDate)}
+  AND ${applicationExpression} IS NOT NULL
+  AND ${applicationExpression} != ''
+GROUP BY application
+ORDER BY application
+LIMIT 200;
+`;
+}
+
+export function getApplicationValuesService(params: GetApplicationValuesParams) {
+    const { selectdbDS, ...queryParams } = params;
+
+    return withErrorHandler(getBackendSrv().fetch({
+        url: '/api/ds/query',
+        method: 'POST',
+        data: {
+            queries: [
+                {
+                    refId: 'getApplicationValues',
+                    datasource: { type: 'mysql', uid: selectdbDS.uid },
+                    rawSql: getApplicationValuesSQL(queryParams),
                     format: 'table',
                 },
             ],

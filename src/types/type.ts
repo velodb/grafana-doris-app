@@ -37,6 +37,7 @@ export interface SurroundingParams {
 
 export interface DataFilterType {
     fieldName: string;
+    variantKey?: string;
     operator: Operator;
     value: Array<string | number>;
     label?: string;
