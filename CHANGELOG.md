@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.4](https://github.com/jeffreys-cat/grafana-doris-app/compare/v1.1.3...v1.1.4) (2026-07-23)
+
+### ✨ Features
+
+* add configurable Kubernetes Application filtering to Discover
+* support exact resource attribute keys, including dotted Kubernetes label keys
+
+### 🐛 Bug Fixes
+
+* hide the Application selector and skip option queries until an attribute key is configured
+* safely escape Application filter identifiers, keys, and values
+
 ## [1.0.1](https://github.com/jeffreys-cat/grafana-doris-app/compare/v1.0.1-alpha.3...v1.0.1) (2026-02-06)
 
 ### ✨ Features
