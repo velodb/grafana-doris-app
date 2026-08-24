@@ -7,6 +7,7 @@ import { Dayjs } from 'dayjs';
 import { DataFilterType, DiscoverCurrent, IntervalEnum, ShortcutItem } from 'types/type';
 import { AggregatableEnum, DISCOVER_DEFAULT_STATUS, DISCOVER_SHORTCUTS, FieldTypeEnum, SearchableEnum } from 'utils/data';
 import { getGrafanaUserTimeZone } from 'utils/time';
+import { DiscoverColumnLayouts, DiscoverQueryState, DiscoverSort } from 'types/discover';
 
 export const locationAtom = atomWithLocation();
 export const dataFilterAtom = atom<DataFilterType[]>([]);
@@ -36,6 +37,13 @@ export const disabledOptionsAtom = atom<string[]>([]);
 export const selectedFieldsAtom = atom<any[]>([]);
 export const tableFieldsAtom = atomWithStorage<any[]>('discover-table-fields', []);
 export const discoverRowsExpandedAtom = atomWithStorage<boolean>('discover-rows-expanded', false);
+export const discoverColumnLayoutsAtom = atomWithStorage<DiscoverColumnLayouts>('discover-column-layouts', {});
+export const discoverSortAtom = atom<DiscoverSort>({ field: '', direction: 'DESC' });
+export const discoverQueryStateAtom = atom<DiscoverQueryState>({
+    status: 'idle',
+    rowCount: 0,
+    auxiliaryErrors: [],
+});
 
 export const timeFieldsAtom = atomWithStorage<any[]>('discover-time-fields',[]);
 export const tableDataAtom = atom<any[]>([]);

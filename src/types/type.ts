@@ -7,7 +7,8 @@ export interface QueryTableDataParams {
     cluster: string;
     startDate: string;
     endDate: string;
-    sort: string;
+    sort: 'ASC' | 'DESC';
+    sortField?: string;
     timeField: string;
     data_filters: any[];
     interval?: IntervalEnum;

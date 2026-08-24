@@ -1,5 +1,5 @@
 'use client';
-import { ColumnDef, Row } from '@tanstack/react-table';
+import { ColumnDef, ColumnOrderState, ColumnSizingState, OnChangeFn, Row, SortingState } from '@tanstack/react-table';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { Drawer, IconButton, Pagination, Tab, TabContent, TabsBar, useTheme2 } from '@grafana/ui';
@@ -18,7 +18,8 @@ import {
     discoverCurrentAtom,
     selectedDatasourceAtom,
     tableFieldsAtom,
-    discoverRowsExpandedAtom
+    discoverRowsExpandedAtom,
+    discoverColumnLayoutsAtom,
 } from 'store/discover';
 import { get } from 'lodash-es';
 import { Button as AntButton, Tooltip } from 'antd';
@@ -31,10 +32,27 @@ import SurroundingLogs from 'components/surrounding-logs';
 import TraceDetail from 'components/trace-detail';
 import { usePluginContext } from '@grafana/data';
 import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
-import { formatFieldDisplayValue, formatTimestampToDateTime, isValidTimeFieldType, parseJsonLikeValue } from 'utils/data';
+import { formatFieldDisplayValue, formatTimestampToDateTime, isComplexType, isValidTimeFieldType, parseJsonLikeValue } from 'utils/data';
+import { DiscoverQueryState, DiscoverSort } from 'types/discover';
+import { reconcileColumnOrder, reconcileColumnSizing } from 'utils/column-layout';
+
+const EXPAND_COLUMN_ID = '__expand';
+const TIME_COLUMN_ID = '__time';
+const SOURCE_COLUMN_ID = '__source';
+const FIELD_COLUMN_PREFIX = 'field:';
+
+const getFieldColumnId = (fieldName: string) => `${FIELD_COLUMN_PREFIX}${fieldName}`;
+
+type DiscoverContentProps = {
+    fetchNextPage: (page: number) => void;
+    getTraceData: (traceId: string, table?: string, callback?: Function) => any;
+    queryState: DiscoverQueryState;
+    sort: DiscoverSort;
+    onSortChange: (sort: DiscoverSort) => void;
+};
 
 
-export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetchNextPage: (page: number) => void; getTraceData: (traceId: string, table?: string, callback?: Function) => any }) {
+export default function DiscoverContent({ fetchNextPage, getTraceData, queryState, sort, onSortChange }: DiscoverContentProps) {
     const theme = useTheme2();
     const [fields, setFields] = useState<any[]>([]);
     const tableTotalCount = useAtomValue(tableTotalCountAtom);
@@ -57,6 +75,44 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
     const currentDatasource = useAtomValue(selectedDatasourceAtom);
     const tableFields = useAtomValue(tableFieldsAtom);
     const [discoverRowsExpanded, setDiscoverRowsExpanded] = useAtom(discoverRowsExpandedAtom);
+    const [columnLayouts, setColumnLayouts] = useAtom(discoverColumnLayoutsAtom);
+    const availableColumnIds = useMemo(
+        () => [
+            EXPAND_COLUMN_ID,
+            TIME_COLUMN_ID,
+            ...(hasSelectedFields ? selectedFields.map((field: any) => getFieldColumnId(field.Field)) : [SOURCE_COLUMN_ID]),
+        ],
+        [hasSelectedFields, selectedFields],
+    );
+    const availableColumnIdsKey = availableColumnIds.join('\u0000');
+    const validPersistentColumnIds = useMemo(
+        () => [
+            EXPAND_COLUMN_ID,
+            TIME_COLUMN_ID,
+            SOURCE_COLUMN_ID,
+            ...tableFields.map((field: any) => getFieldColumnId(String(field?.Field || field?.value || ''))),
+        ],
+        [tableFields],
+    );
+    const defaultColumnSizing = useMemo<ColumnSizingState>(() => ({
+        [TIME_COLUMN_ID]: 240,
+        [SOURCE_COLUMN_ID]: 640,
+        ...Object.fromEntries(selectedFields.map((field: any) => [getFieldColumnId(field.Field), 240])),
+    }), [selectedFields]);
+    const layoutKey = useMemo(() => {
+        const datasourceId = currentDatasource?.uid || currentDatasource?.id || currentDatasource?.name;
+        if (!datasourceId || !discoverCurrent.database || !discoverCurrent.table) {
+            return '';
+        }
+        return JSON.stringify([
+            datasourceId,
+            discoverCurrent.catalog || 'internal',
+            discoverCurrent.database,
+            discoverCurrent.table,
+        ]);
+    }, [currentDatasource?.id, currentDatasource?.name, currentDatasource?.uid, discoverCurrent.catalog, discoverCurrent.database, discoverCurrent.table]);
+    const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => availableColumnIds);
+    const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() => defaultColumnSizing);
     const context = usePluginContext();
     // user settings
     const jsonData = context.meta.jsonData || {};
@@ -64,6 +120,58 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
     const { database = '', datasource, logsTable = '', targetTraceTable = '' } = logsConfig;
     // local input state for page-jump control
     const [jumpPage, setJumpPage] = useState<string>(String(page));
+
+    useEffect(() => {
+        const persistedLayout = layoutKey ? columnLayouts[layoutKey] : undefined;
+        setColumnOrder(reconcileColumnOrder(availableColumnIds, persistedLayout?.columnOrder));
+        setColumnSizing({
+            ...defaultColumnSizing,
+            ...reconcileColumnSizing(availableColumnIds, persistedLayout?.columnSizing),
+        });
+        // availableColumnIdsKey intentionally represents the primitive column identity list.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [availableColumnIdsKey, columnLayouts, defaultColumnSizing, layoutKey]);
+
+    useEffect(() => {
+        if (!layoutKey || columnOrder.length === 0) {
+            return;
+        }
+        const timeout = window.setTimeout(() => {
+            setColumnLayouts(previous => {
+                const currentLayout = previous[layoutKey];
+                const validIds = new Set(validPersistentColumnIds);
+                const inactiveColumnOrder = (currentLayout?.columnOrder || []).filter(
+                    id => validIds.has(id) && !columnOrder.includes(id),
+                );
+                const retainedSizing = Object.fromEntries(
+                    Object.entries(currentLayout?.columnSizing || {}).filter(([id]) => validIds.has(id)),
+                );
+                const nextLayout = {
+                    columnOrder: [...columnOrder, ...inactiveColumnOrder],
+                    columnSizing: { ...retainedSizing, ...columnSizing },
+                };
+                if (JSON.stringify(currentLayout) === JSON.stringify(nextLayout)) {
+                    return previous;
+                }
+                return { ...previous, [layoutKey]: nextLayout };
+            });
+        }, 250);
+        return () => window.clearTimeout(timeout);
+    }, [columnOrder, columnSizing, layoutKey, setColumnLayouts, validPersistentColumnIds]);
+
+    const resetColumnLayout = React.useCallback(() => {
+        setColumnOrder(availableColumnIds);
+        setColumnSizing(defaultColumnSizing);
+        if (layoutKey) {
+            setColumnLayouts(previous => {
+                if (!previous[layoutKey]) {
+                    return previous;
+                }
+                const { [layoutKey]: _removed, ...remaining } = previous;
+                return remaining;
+            });
+        }
+    }, [availableColumnIds, defaultColumnSizing, layoutKey, setColumnLayouts]);
 
     useEffect(() => {
         setJumpPage(String(page));
@@ -116,14 +224,11 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
         setFields(data);
     }, [tableData, currentTimeField]);
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     const handleRemove = React.useCallback(
         (field: any) => {
-            const index = selectedFields.findIndex((item: any) => item.Field === field.Field);
-            selectedFields.splice(index, 1);
-            setSelectedFields([...selectedFields]);
+            setSelectedFields(current => current.filter((item: any) => item.Field !== field.Field));
         },
-        [selectedFields, setSelectedFields],
+        [setSelectedFields],
     );
 
     const renderSubComponent = ({ row }: { row: Row<any> }) => {
@@ -296,8 +401,14 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
     const columns = useMemo<Array<ColumnDef<any>>>(() => {
         let dynamicColumns: Array<ColumnDef<any>> = [
             {
+                id: EXPAND_COLUMN_ID,
                 accessorKey: 'collapse',
                 header: ``,
+                size: 48,
+                minSize: 48,
+                maxSize: 48,
+                enableResizing: false,
+                enableSorting: false,
                 cell: ({ row, getValue }) => {
                     return (
                         row.getCanExpand() && (
@@ -314,8 +425,14 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                 },
             },
             {
+                id: TIME_COLUMN_ID,
                 header: () => currentTimeField || 'Time',
                 accessorKey: 'time',
+                size: 240,
+                minSize: 80,
+                maxSize: 800,
+                enableSorting: true,
+                sortDescFirst: false,
                 cell: ({ row, getValue }) => {
                     const fieldValue = getValue<string>();
                     const fieldName = currentTimeField;
@@ -342,9 +459,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                     }
                     return (
                         <div
-                            className={`${css`
-                                 width: 240px;
-                             `} ${HoverStyle}`}
+                            className={HoverStyle}
                         >
                             <div
                                 className={css`
@@ -368,8 +483,13 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
         ];
         if (!hasSelectedFields) {
             dynamicColumns.push({
+                id: SOURCE_COLUMN_ID,
                 accessorKey: '_source',
                 header: '_source',
+                size: 640,
+                minSize: 80,
+                maxSize: 800,
+                enableSorting: false,
                 cell: ({ row, getValue, ...rest }) => {
                     const html = getValue<string>();
                     const handleClick: React.MouseEventHandler<HTMLDivElement> = e => {
@@ -437,7 +557,13 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                 ...dynamicColumns,
                 ...selectedFields.map((field: any) => {
                     return {
-                        accessorKey: field.Field,
+                        id: getFieldColumnId(field.Field),
+                        accessorFn: (row: any) => get(row._original, field.Field),
+                        size: 240,
+                        minSize: 80,
+                        maxSize: 800,
+                        enableSorting: field.Field !== currentTimeField && !isComplexType(field.Type),
+                        sortDescFirst: false,
                         header: () => (
                             <div
                                 className={css`
@@ -503,11 +629,12 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                                             </AntButton> : (
                                                 <span
                                                     className={css`
+                                                        display: block;
+                                                        width: 100%;
                                                         font-size: 12px;
                                                         white-space: nowrap;
                                                         text-overflow: ellipsis;
                                                         overflow: hidden;
-                                                        max-width: 200px;
                                                     `}
                                                 >
                                                     {fieldValue}
@@ -533,15 +660,83 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentTimeField, handleRemove, hasSelectedFields, selectedFields, theme.isDark]);
 
+    const tableSorting = useMemo<SortingState>(() => {
+        const selectedColumnId = sort.field === currentTimeField || !sort.field
+            ? TIME_COLUMN_ID
+            : selectedFields.some((field: any) => field.Field === sort.field)
+                ? getFieldColumnId(sort.field)
+                : TIME_COLUMN_ID;
+        return [{ id: selectedColumnId, desc: sort.direction === 'DESC' }];
+    }, [currentTimeField, selectedFields, sort.direction, sort.field]);
+
+    useEffect(() => {
+        if (
+            sort.field &&
+            sort.field !== currentTimeField &&
+            !selectedFields.some((field: any) => field.Field === sort.field)
+        ) {
+            onSortChange({ field: currentTimeField, direction: 'DESC' });
+        }
+    }, [currentTimeField, onSortChange, selectedFields, sort.field]);
+
+    const handleTableSortingChange = React.useCallback<OnChangeFn<SortingState>>((updater) => {
+        const nextSorting = typeof updater === 'function' ? updater(tableSorting) : updater;
+        const nextColumn = nextSorting[0];
+        if (!nextColumn) {
+            onSortChange({ field: currentTimeField, direction: 'DESC' });
+            return;
+        }
+        const field = nextColumn.id === TIME_COLUMN_ID
+            ? currentTimeField
+            : nextColumn.id.startsWith(FIELD_COLUMN_PREFIX)
+                ? nextColumn.id.slice(FIELD_COLUMN_PREFIX.length)
+                : currentTimeField;
+        onSortChange({ field, direction: nextColumn.desc ? 'DESC' : 'ASC' });
+    }, [currentTimeField, onSortChange, tableSorting]);
+
+    const emptyContent = queryState.status === 'error' ? (
+        <div role="status" className={css`padding: 32px 16px; text-align: center;`}>
+            <strong>Query failed</strong>
+            <div className={css`margin-top: 4px; color: ${theme.colors.text.secondary};`}>
+                Review the query error above, then update the query and try again.
+            </div>
+        </div>
+    ) : queryState.status === 'success' && queryState.rowCount === 0 ? (
+        <div role="status" className={css`padding: 32px 16px; text-align: center;`}>
+            <strong>Query succeeded — no results</strong>
+            <div className={css`margin-top: 4px; color: ${theme.colors.text.secondary};`}>
+                Try expanding the time range or adjusting the filters.
+            </div>
+        </div>
+    ) : queryState.status === 'loading' ? (
+        <div role="status" className={css`padding: 32px 16px; text-align: center;`}>Querying…</div>
+    ) : undefined;
+
+    const isLayoutModified = JSON.stringify(columnOrder) !== JSON.stringify(availableColumnIds) ||
+        JSON.stringify(columnSizing) !== JSON.stringify(defaultColumnSizing);
+
     return (
         <div
             className={css`
                 overflow-x: scroll;
             `}
         >
-            {/* {
-                loading.getTableDataCharts && <LoadingBar width={100} />
-            } */}
+            <div
+                className={css`
+                    display: flex;
+                    justify-content: flex-end;
+                    min-height: 28px;
+                    padding: 0 8px 4px;
+                `}
+            >
+                <IconButton
+                    name="history"
+                    tooltip="Reset column layout"
+                    aria-label="Reset column layout"
+                    disabled={!isLayoutModified}
+                    onClick={resetColumnLayout}
+                />
+            </div>
             <SDCollapsibleTable
                 className={css`
                     width: 100%;
@@ -553,8 +748,16 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                 showExpandAllToggle
                 allRowsExpanded={discoverRowsExpanded}
                 onAllRowsExpandedChange={setDiscoverRowsExpanded}
+                columnOrder={columnOrder}
+                onColumnOrderChange={setColumnOrder}
+                columnSizing={columnSizing}
+                onColumnSizingChange={setColumnSizing}
+                sorting={tableSorting}
+                onSortingChange={handleTableSortingChange}
+                enableColumnReordering
+                emptyContent={emptyContent}
             />
-            <div
+            {queryState.status !== 'error' ? <div
                 className={css`
                     display: flex;
                     justify-content: space-between;
@@ -638,7 +841,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData }: { fetch
                         >Go</button>
                     </div>
                 </div>
-            </div>
+            </div> : null}
             <TraceDetail onClose={() => setDrawerOpen(false)} open={drawerOpen} traceId={selectedRow?.trace_id} traceTable="otel_traces" />
 
             {surroundingLogsOpen && (

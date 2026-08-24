@@ -58,7 +58,7 @@ services:
     build:
       context: ../.config
       args:
-        grafana_image: ${GRAFANA_IMAGE:-grafana-enterprise}
+        grafana_image: ${GRAFANA_IMAGE:-grafana}
         grafana_version: ${GRAFANA_VERSION:-latest}
         development: "false"
         anonymous_auth_enabled: "false"
@@ -66,6 +66,17 @@ services:
       - "${GRAFANA_PORT:-3003}:3000"
     environment:
       NODE_ENV: development
+      # Docker Desktop can inject host proxy variables into containers. The
+      # local alerting test needs Grafana to reach public HTTPS endpoints
+      # directly, just like the Doris services above.
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+      ALL_PROXY: ""
+      all_proxy: ""
+      NO_PROXY: "*"
+      no_proxy: "*"
       GF_LOG_LEVEL: info
       GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: velodb-doris-app
       GF_PLUGINS_PREINSTALL_DISABLED: "true"

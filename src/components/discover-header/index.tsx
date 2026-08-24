@@ -400,10 +400,27 @@ export default function DiscoverHeader(
         }).subscribe({
             next: ({ data, ok }: any) => {
                 if (ok) {
-                    const frame = toDataFrame(data.results.getIndexes.frames[0]);
-                    const values = Array.from(frame.fields[2].values);
-                    const columnNames = Array.from(frame.fields[4].values);
-                    const indexesTypes = Array.from(frame.fields[10].values);
+                    const frameData = data?.results?.getIndexes?.frames?.[0];
+                    if (!frameData) {
+                        setIndexes([]);
+                        setCurrentIndex([]);
+                        return;
+                    }
+                    const frame = toDataFrame(frameData);
+                    if (frame.fields.length === 0) {
+                        setIndexes([]);
+                        setCurrentIndex([]);
+                        return;
+                    }
+                    const values = Array.from(
+                        (frame.fields.find(field => field.name === 'Key_name') ?? frame.fields[2])?.values ?? [],
+                    );
+                    const columnNames = Array.from(
+                        (frame.fields.find(field => field.name === 'Column_name') ?? frame.fields[4])?.values ?? [],
+                    );
+                    const indexesTypes = Array.from(
+                        (frame.fields.find(field => field.name === 'Index_type') ?? frame.fields[10])?.values ?? [],
+                    );
 
                     if (!values || values.length === 0) {
                         setIndexes([]);

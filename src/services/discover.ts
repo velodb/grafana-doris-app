@@ -2,7 +2,12 @@ import { getBackendSrv } from '@grafana/runtime';
 import { getQueryTableChartsSQL, getQueryTableResultCountSQL, getQueryTableResultSQL, getSurroundingSQL } from './sql';
 import { withErrorHandler } from 'components/with-error-handler/withErrorHandler';
 
-export function getTableDataService(payload: any) {
+type DiscoverServiceOptions = {
+    showBackendError?: boolean;
+    defaultMessage?: string;
+};
+
+export function getTableDataService(payload: any, options?: DiscoverServiceOptions) {
     const { selectdbDS, ...rest } = payload;
     const QueryTableResultSQL = getQueryTableResultSQL(rest);
     const response = withErrorHandler(getBackendSrv().fetch({
@@ -22,11 +27,11 @@ export function getTableDataService(payload: any) {
             ],
         },
         credentials: 'include',
-    }));
+    }), { ...options, generatedSql: QueryTableResultSQL });
     return response;
 }
 
-export function getTableDataChartsService(payload: any) {
+export function getTableDataChartsService(payload: any, options?: DiscoverServiceOptions) {
     const { selectdbDS, ...rest } = payload;
     const QueryTableChartsSQL = getQueryTableChartsSQL(rest);
     const response = withErrorHandler(getBackendSrv().fetch({
@@ -46,11 +51,11 @@ export function getTableDataChartsService(payload: any) {
             ],
         },
         credentials: 'include',
-    }));
+    }), { ...options, generatedSql: QueryTableChartsSQL });
     return response;
 }
 
-export function getTopDataService(payload: any) {
+export function getTopDataService(payload: any, options?: DiscoverServiceOptions) {
     const { selectdbDS, ...rest } = payload;
     const QueryTableResultSQL = getQueryTableResultSQL(rest);
     const response = withErrorHandler(getBackendSrv().fetch({
@@ -70,11 +75,11 @@ export function getTopDataService(payload: any) {
             ],
         },
         credentials: 'include',
-    }));
+    }), { ...options, generatedSql: QueryTableResultSQL });
     return response;
 }
 
-export function getTableDataCountService(payload: any) {
+export function getTableDataCountService(payload: any, options?: DiscoverServiceOptions) {
     const { selectdbDS, ...rest } = payload;
     const QueryTableResultCountSQL = getQueryTableResultCountSQL(rest);
     const response = withErrorHandler(getBackendSrv().fetch({
@@ -94,7 +99,7 @@ export function getTableDataCountService(payload: any) {
             ],
         },
         credentials: 'include',
-    }));
+    }), { ...options, generatedSql: QueryTableResultCountSQL });
     return response;
 }
 
@@ -122,4 +127,3 @@ export function getSurroundingDataService(payload: any) {
     }));
     return response;
 }
-

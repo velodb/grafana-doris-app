@@ -1,7 +1,23 @@
 import { QueryTableDataParams, SurroundingParams } from 'types/type';
-import { addSqlFilter } from 'utils/sql-filter';
+import { addSqlFilter, transformFieldPath } from 'utils/sql-filter';
 
 export { addSqlFilter, getFilterSQL, transformFieldPath } from 'utils/sql-filter';
+
+export function getQueryOrderBySQL(params: Pick<QueryTableDataParams, 'sort' | 'sortField' | 'timeField'>) {
+    const sortField = params.sortField?.trim() || params.timeField;
+    const direction = params.sort === 'ASC' ? 'ASC' : 'DESC';
+    const primaryOrder = `${transformFieldPath(sortField)} ${direction}`;
+
+    if (sortField === params.timeField) {
+        return primaryOrder;
+    }
+
+    return `${primaryOrder}, ${transformFieldPath(params.timeField)} DESC`;
+}
+
+export function resolveQuerySortField(requestedField: string | undefined, timeField: string, availableFields: string[]) {
+    return requestedField && new Set(availableFields).has(requestedField) ? requestedField : timeField;
+}
 
 export function getQueryTableResultSQL(params: QueryTableDataParams) {
     const indexesStatement = params.indexes_statement;
@@ -27,7 +43,7 @@ export function getQueryTableResultSQL(params: QueryTableDataParams) {
     }
 
     // ORDER BY 的 timeField 也加反引号
-    statement = statement + ` ORDER BY \`${params.timeField}\` DESC LIMIT ${+params.page_size} OFFSET ${(+params?.page - 1) * params.page_size} `;
+    statement = statement + ` ORDER BY ${getQueryOrderBySQL(params)} LIMIT ${+params.page_size} OFFSET ${(+params?.page - 1) * params.page_size} `;
 
     return statement;
 }

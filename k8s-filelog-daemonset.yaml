@@ -1,0 +1,184 @@
+# Kubernetes file-log collection with pod metadata enrichment.
+# Update LOG_ROOT and OTEL_GATEWAY_ENDPOINT before applying this manifest.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-filelog-agent-settings
+  namespace: observability
+data:
+  # Host path shared by application Pods and the Collector DaemonSet.
+  LOG_ROOT: /var/log/application
+  # OTLP/HTTP endpoint of the central Gateway. Do not append /v1/logs.
+  OTEL_GATEWAY_ENDPOINT: http://otel-collector-gateway.observability.svc.cluster.local:4318
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-filelog-agent
+  namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-filelog-agent
+rules:
+  # Needed by k8sattributes to associate a path-derived Pod UID with a Pod.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-filelog-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-filelog-agent
+subjects:
+  - kind: ServiceAccount
+    name: otel-filelog-agent
+    namespace: observability
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-filelog-agent-config
+  namespace: observability
+data:
+  config.yaml: |
+    extensions:
+      file_storage:
+        directory: /var/lib/otelcol/filelog
+
+    receivers:
+      filelog/application:
+        include:
+          - ${env:LOG_ROOT}/*/*/*/*/*.log
+        include_file_path: true
+        start_at: end
+        storage: file_storage
+        operators:
+          # Expected path:
+          # <LOG_ROOT>/<namespace>/<pod-uid>/<pod-name>/<container-name>/<file>.log
+          - type: regex_parser
+            id: extract-pod-from-path
+            parse_from: attributes["log.file.path"]
+            parse_to: resource
+            regex: '^${env:LOG_ROOT}/(?P<log_namespace>[^/]+)/(?P<log_pod_uid>[^/]+)/(?P<log_pod_name>[^/]+)/(?P<log_container_name>[^/]+)/.*\.log$'
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 384
+        spike_limit_mib: 96
+      # Convert the path-derived UID to the OpenTelemetry semantic convention
+      # required by k8sattributes pod association.
+      resource/path-to-k8s:
+        attributes:
+          - key: k8s.pod.uid
+            from_attribute: log_pod_uid
+            action: upsert
+      k8sattributes:
+        auth_type: serviceAccount
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.uid
+        extract:
+          metadata:
+            - k8s.namespace.name
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.pod.ip
+            - k8s.node.name
+            - k8s.container.name
+          # Collect all Pod labels. Restrict this to an allowlist if labels
+          # contain high-cardinality or sensitive values.
+          labels:
+            - tag_name: $$1
+              key_regex: (.*)
+      batch:
+        timeout: 5s
+        send_batch_size: 8192
+
+    exporters:
+      otlphttp/gateway:
+        endpoint: ${env:OTEL_GATEWAY_ENDPOINT}
+        retry_on_failure:
+          enabled: true
+          initial_interval: 1s
+          max_interval: 30s
+          max_elapsed_time: 5m
+        sending_queue:
+          enabled: true
+          num_consumers: 2
+          queue_size: 2048
+
+    service:
+      extensions: [file_storage]
+      pipelines:
+        logs:
+          receivers: [filelog/application]
+          processors: [memory_limiter, resource/path-to-k8s, k8sattributes, batch]
+          exporters: [otlphttp/gateway]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: otel-filelog-agent
+  namespace: observability
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-filelog-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otel-filelog-agent
+    spec:
+      serviceAccountName: otel-filelog-agent
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.144.0
+          imagePullPolicy: IfNotPresent
+          args: ["--config=/conf/config.yaml"]
+          envFrom:
+            - configMapRef:
+                name: otel-filelog-agent-settings
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsUser: 0
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: config
+              mountPath: /conf
+              readOnly: true
+            - name: application-logs
+              mountPath: /var/log/application
+              readOnly: true
+            - name: filelog-state
+              mountPath: /var/lib/otelcol/filelog
+      volumes:
+        - name: config
+          configMap:
+            name: otel-filelog-agent-config
+        - name: application-logs
+          hostPath:
+            # Must match LOG_ROOT in otel-filelog-agent-settings.
+            path: /var/log/application
+            type: Directory
+        - name: filelog-state
+          hostPath:
+            path: /var/lib/otelcol/filelog
+            type: DirectoryOrCreate

@@ -66,22 +66,35 @@ function createBackendError(res: any, defaultMessage: string) {
     return err;
 }
 
+function isFailedResponse(res: any) {
+    const status = Number(res?.status);
+    const responseError = res?.data?.error;
+
+    return (
+        res?.ok === false ||
+        (Number.isFinite(status) && status >= 400) ||
+        Boolean(responseError && !res?.data?.results)
+    );
+}
+
 export function withErrorHandler<T>(
     source$: Observable<T>,
     options?: {
         showBackendError?: boolean;
         defaultMessage?: string;
+        generatedSql?: string;
     }
 ): Observable<T> {
     const {
         showBackendError = true,
         defaultMessage = 'Request failed',
+        generatedSql,
     } = options || {};
 
     return source$.pipe(
         map((res: any) => {
             const resultError = getFirstResultError(res?.data);
-            if (res?.ok === false || resultError) {
+            if (isFailedResponse(res) || resultError) {
                 throw createBackendError(res, defaultMessage);
             }
 
@@ -89,12 +102,18 @@ export function withErrorHandler<T>(
         }),
 
         catchError((err: any) => {
-            logError(toError(err), { source: 'withErrorHandler' });
+            const queryError = err instanceof Error
+                ? err as any
+                : Object.assign(toError(err) as any, err && typeof err === 'object' ? err : {});
+            if (generatedSql) {
+                queryError.generatedSql = generatedSql;
+            }
+            logError(toError(queryError), { source: 'withErrorHandler' });
             if (showBackendError) {
-                showGlobalError(getErrorText(err));
+                showGlobalError(getErrorText(queryError));
             }
 
-            return throwError(() => err);
+            return throwError(() => queryError);
         })
     );
 }

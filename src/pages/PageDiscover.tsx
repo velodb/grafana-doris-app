@@ -10,10 +10,16 @@ import DiscoverContent from 'components/discover-content';
 import DiscoverHeader from '../components/discover-header';
 import { testIds } from '../components/testIds';
 import { useDiscoverData } from './PageDiscover/useDiscoverData';
+import DiscoverQueryFeedback from 'components/discover-query-feedback';
+import { useAtomValue } from 'jotai';
+import { currentDatabaseAtom, currentTableAtom, searchTypeAtom } from 'store/discover';
 
 export default function PageDiscover() {
     const theme = useTheme2();
-    const { loading, onQuerying, getTraceData } = useDiscoverData();
+    const { loading, queryState, sort, onSortChange, onQuerying, getTraceData } = useDiscoverData();
+    const searchType = useAtomValue(searchTypeAtom);
+    const currentDatabase = useAtomValue(currentDatabaseAtom);
+    const currentTable = useAtomValue(currentTableAtom);
 
     return (
         <div
@@ -28,6 +34,12 @@ export default function PageDiscover() {
                 <div data-testid={testIds.pageTwo.container}>
                     <DiscoverHeader onQuerying={onQuerying} loading={loading.getTableData || loading.getTableDataCharts} />
                     <DiscoverFilter />
+                    <DiscoverQueryFeedback
+                        queryState={queryState}
+                        searchType={searchType}
+                        database={currentDatabase}
+                        table={currentTable}
+                    />
                 </div>
                 <section
                     className={css`
@@ -65,7 +77,13 @@ export default function PageDiscover() {
                                 margin-top: 24px;
                             `}
                         >
-                            <DiscoverContent getTraceData={getTraceData} fetchNextPage={() => {}} />
+                            <DiscoverContent
+                                getTraceData={getTraceData}
+                                fetchNextPage={() => {}}
+                                queryState={queryState}
+                                sort={sort}
+                                onSortChange={onSortChange}
+                            />
                         </div>
                     </div>
                 </section>
