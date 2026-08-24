@@ -143,8 +143,3 @@ kubectl logs -n observability -l app.kubernetes.io/name=otel-filelog-agent -c ot
 - `start_at: end` 表示首次部署时只采集新日志。若需要回补历史日志，改为 `start_at: beginning`，并先评估历史日志量。
 - Gateway 或存储端不可用时，Collector 会有限时间重试；生产环境应结合可接受的数据丢失窗口设置队列和重试策略。
 
-## 已验证内容与边界
-
-本方案已在本机 Kubernetes 环境验证：文件日志可被 DaemonSet 读取，日志路径中的 Pod UID 能成功关联 Kubernetes API，并得到 Pod IP、Pod 名称、Namespace、容器名称和 Pod Labels。
-
-本机 Doris 存储端当时存在缺失分区和不可用 BE 副本的问题，导致未完成存储落库验证；该问题不影响 DaemonSet 的文件读取、元数据关联和向 OTLP Gateway 的转发能力。上线前仍应在目标环境完成 Gateway 与存储端的端到端验收。
