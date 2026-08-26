@@ -1,7 +1,7 @@
 {
     "name": "Variant nested text fallback",
     "lucene": "attrs.message:error",
-    "expectedSql": "SELECT * FROM `logs`.`otel_traces` WHERE (lower(toString(`attrs`['message'])) LIKE lower('%error%'))",
+    "expectedSql": "SELECT * FROM `logs`.`otel_traces` WHERE (lower(CAST(`attrs`['message'] AS STRING)) LIKE lower('%error%'))",
     "databaseName": "logs",
     "tableName": "otel_traces",
     "connectionId": "conn-1",

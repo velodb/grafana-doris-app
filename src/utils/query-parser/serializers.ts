@@ -208,7 +208,7 @@ export abstract class SQLSerializer implements Serializer {
             return `notEmpty(${columnJSON?.string}) ${isNegatedField ? '!' : ''}= 1`;
         }
         if (propertyType === JSDataType.Variant) {
-            return `notEmpty(toString(${column})) ${isNegatedField ? '!' : ''}= 1`;
+            return `CAST(${column} AS STRING) IS ${isNegatedField ? '' : 'NOT '}NULL`;
         }
         return `notEmpty(${column}) ${isNegatedField ? '!' : ''}= 1`;
     }
@@ -307,10 +307,7 @@ export abstract class SQLSerializer implements Serializer {
             return this.NOT_FOUND_QUERY;
         }
 
-        return SqlString.format(
-            `(dynamicType(?) in (?) AND CAST(toString(?) AS DOUBLE) ${operator} CAST(? AS DOUBLE))`,
-            [SqlString.raw(column), CLICK_HOUSE_JSON_NUMBER_TYPES, SqlString.raw(column), term],
-        );
+        return SqlString.format(`(TRY_CAST(? AS DOUBLE) ${operator} CAST(? AS DOUBLE))`, [SqlString.raw(column), term]);
     }
 
     private variantBooleanComparison(column: string | undefined, term: string, isNegatedField: boolean): string {
@@ -318,7 +315,7 @@ export abstract class SQLSerializer implements Serializer {
             return this.NOT_FOUND_QUERY;
         }
 
-        const clause = SqlString.format(`(lower(toString(?)) = ?)`, [
+        const clause = SqlString.format(`(TRY_CAST(? AS BOOLEAN) = CAST(? AS BOOLEAN))`, [
             SqlString.raw(column),
             `${term}`.trim().toLowerCase(),
         ]);
@@ -371,7 +368,7 @@ export abstract class SQLSerializer implements Serializer {
             ]);
         }
 
-        return SqlString.format(`(lower(toString(?)) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`, [
+        return SqlString.format(`(lower(CAST(? AS STRING)) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`, [
             SqlString.raw(column),
             this.variantLikePattern(term, prefixWildcard, suffixWildcard, isPhrase),
         ]);
@@ -501,7 +498,7 @@ export abstract class SQLSerializer implements Serializer {
                             if (!identifier) {
                                 return null;
                             }
-                            return SqlString.format(`(lower(toString(?)) LIKE lower(?))`, [
+                            return SqlString.format(`(lower(CAST(? AS STRING)) LIKE lower(?))`, [
                                 SqlString.raw(identifier),
                                 this.variantLikePattern(term, prefixWildcard, suffixWildcard, isPhrase),
                             ]);

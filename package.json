@@ -1,6 +1,6 @@
 {
   "name": "doris-app",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "packageManager": "yarn@4.14.1",
   "scripts": {
     "build": "webpack -c ./webpack.config.ts --env production",

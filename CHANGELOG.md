@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.5](https://github.com/jeffreys-cat/grafana-doris-app/compare/v1.1.4...v1.1.5) (2026-08-26)
+
+### 🐛 Bug Fixes
+
+* make Lucene `VARIANT` queries compatible with Apache Doris 4.0 by using `CAST` and `TRY_CAST` instead of unsupported ClickHouse conversion functions
+* support safe text, numeric, boolean, and existence filtering on `VARIANT` paths
+
 ## [1.1.4](https://github.com/jeffreys-cat/grafana-doris-app/compare/v1.1.3...v1.1.4) (2026-07-23)
 
 ### ✨ Features
