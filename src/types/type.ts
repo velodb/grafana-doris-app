@@ -9,6 +9,8 @@ export interface QueryTableDataParams {
     endDate: string;
     sort: 'ASC' | 'DESC';
     sortField?: string;
+    sortFieldPath?: string[];
+    sortFieldType?: string;
     timeField: string;
     data_filters: any[];
     interval?: IntervalEnum;
@@ -39,6 +41,7 @@ export interface SurroundingParams {
 export interface DataFilterType {
     fieldName: string;
     variantKey?: string;
+    variantPath?: string[];
     operator: Operator;
     value: Array<string | number>;
     label?: string;

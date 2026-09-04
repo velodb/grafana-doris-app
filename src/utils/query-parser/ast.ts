@@ -1,12 +1,12 @@
 import * as lucene from '@hyperdx/lucene';
 import { logWarning } from '@grafana/runtime';
-import { decodeSpecialTokens, encodeSpecialTokens } from './tokenUtils';
+import { decodeSpecialTokens, encodeSpecialTokens, encodeVariantLiteralFieldPaths } from './tokenUtils';
 import { IMPLICIT_FIELD } from './constants';
 import { EnglishSerializer, Serializer } from './serializers';
 import { toError } from 'utils/errors';
 
 export function parse(query: string): lucene.AST {
-    return lucene.parse(encodeSpecialTokens(query));
+    return lucene.parse(encodeSpecialTokens(encodeVariantLiteralFieldPaths(query)));
 }
 
 async function nodeTerm(node: lucene.Node, serializer: Serializer): Promise<string> {

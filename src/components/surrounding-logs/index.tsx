@@ -32,14 +32,16 @@ import {
     tableFieldsAtom,
 } from 'store/discover';
 // import dayjs from 'dayjs';
-import { get, sortBy } from 'lodash-es';
+import { sortBy } from 'lodash-es';
 import { getSurroundingDataService } from 'services/discover';
 import { lastValueFrom } from 'rxjs';
-import { convertColumnToRowViaFieldsType, escapeHtml, formatFieldDisplayValue, formatTimestampToDateTime, parseJsonLikeValue } from 'utils/data';
+import { convertColumnToRowViaFieldsType, escapeHtml, formatFieldDisplayValue, formatTimestampToDateTime, isVariantType, parseJsonLikeValue } from 'utils/data';
 import { generateTableDataUID } from 'utils/utils';
 import { SurroundingContentTableActions } from './content/content-table-actions';
 import { logError } from '@grafana/runtime';
 import { toError } from 'utils/errors';
+import { VariantValueViewer } from 'components/discover-content/variant-value-viewer';
+import { getVariantFieldValue } from 'utils/variant-fields';
 
 export default function SurroundingLogs() {
     const theme = useTheme2();
@@ -338,6 +340,7 @@ export default function SurroundingLogs() {
                                 {subTableData.map((item: any) => {
                                     const fieldValue = formatFieldDisplayValue(item.value, 'compact');
                                     const fieldName = item.field;
+                                    const fieldType = tableFields.find((field: any) => field.Field === fieldName)?.Type;
                                     const tableRowStyle = css`
                                         &:hover {
                                             .filter-table-content {
@@ -363,7 +366,9 @@ export default function SurroundingLogs() {
                                             </td>
                                             <td className="h-8 text-xs">{fieldName || '-'}</td>
                                             <td className="h-8 whitespace-normal text-xs">
-                                                <div className="w-full break-all">{fieldValue}</div>
+                                                <div className="w-full break-all">
+                                                    {isVariantType(fieldType) ? <VariantValueViewer value={item.value} /> : fieldValue}
+                                                </div>
                                             </td>
                                         </tr>
                                     );
@@ -372,26 +377,7 @@ export default function SurroundingLogs() {
                         </table>
                     )}
                     {state[1].active && (
-                        <div>
-                            <pre
-                                className={css`
-                                    padding: 16px;
-                                    margin: 0;
-                                    overflow-x: auto;
-                                    white-space: pre-wrap;
-                                    word-break: break-all;
-                                    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-                                    font-size: 12px;
-                                    line-height: 1.5;
-                                    ${theme.isDark ? 'background-color: #1e1e1e; color: #d4d4d4;' : 'background-color: #f5f5f5; color: #333;'}
-                                    border-radius: 4px;
-                                    max-height: 400px;
-                                    overflow-y: auto;
-                                `}
-                            >
-                                {formatFieldDisplayValue(processedData, 'pretty')}
-                            </pre>
-                        </div>
+                        <VariantValueViewer value={processedData} />
                     )}
                 </TabContent>
                 {/* Surrounding items link is handled by parent (DiscoverContent). No action here. */}
@@ -420,8 +406,14 @@ export default function SurroundingLogs() {
     const columns = useMemo<Array<ColumnDef<any>>>(() => {
         let dynamicColumns: Array<ColumnDef<any>> = [
             {
+                id: '__expand',
                 accessorKey: 'collapse',
                 header: ``,
+                size: 48,
+                minSize: 48,
+                maxSize: 48,
+                enableResizing: false,
+                enableSorting: false,
                 cell: ({ row, getValue }) => {
                     return (
                         row.getCanExpand() && (
@@ -438,8 +430,12 @@ export default function SurroundingLogs() {
                 },
             },
             {
+                id: '__time',
                 header: 'Time',
                 accessorKey: 'time',
+                size: 240,
+                minSize: 80,
+                maxSize: 800,
                 cell: ({ row, getValue }) => {
                     const fieldValue = getValue<string>();
                     const fieldName = currentTimeField;
@@ -473,8 +469,13 @@ export default function SurroundingLogs() {
         ];
         if (!hasSelectedFields) {
             dynamicColumns.push({
+                id: '__source',
                 accessorKey: '_source',
                 header: '_source',
+                size: 640,
+                minSize: 80,
+                maxSize: 800,
+                enableSorting: false,
                 cell: ({ row, getValue }) => {
                     function createMarkup() {
                         return { __html: getValue<string>() };
@@ -514,7 +515,11 @@ export default function SurroundingLogs() {
                 ...dynamicColumns,
                 ...selectedSurroundingFields.map((field: any) => {
                     return {
-                        accessorKey: field.Field,
+                        id: `field:${field.Field}`,
+                        accessorFn: (row: any) => getVariantFieldValue(row._original, field),
+                        size: 240,
+                        minSize: 80,
+                        maxSize: 800,
                         header: () => (
                             <div
                                 className={css`
@@ -539,9 +544,9 @@ export default function SurroundingLogs() {
                                 />
                             </div>
                         ),
-                        cell: ({ row, getValue }: any) => {
-                            // let fieldValue = row.original._original[field.Field];
-                            const fieldValue = formatFieldDisplayValue(get(row.original._original, field.Field), 'compact');
+                        cell: ({ row }: any) => {
+                            const rawFieldValue = getVariantFieldValue(row.original._original, field);
+                            const fieldValue = formatFieldDisplayValue(rawFieldValue, 'compact');
                             const fieldName = field.Field;
                             const fieldType = field.Type;
                             return (
@@ -554,7 +559,7 @@ export default function SurroundingLogs() {
                                 >
                                     <div className={`max-h-48 overflow-auto`}>
                                         <div className="flex items-center break-all py-4">
-                                            {field.value === 'trace_id' && fieldValue ? <Button>{fieldValue}</Button> : <span className="text-xs">{fieldValue}</span>}
+                                            {isVariantType(fieldType) ? <VariantValueViewer value={rawFieldValue} /> : field.value === 'trace_id' && fieldValue ? <Button>{fieldValue}</Button> : <span className="text-xs">{fieldValue}</span>}
                                         </div>
                                     </div>
                                     {

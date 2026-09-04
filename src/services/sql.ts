@@ -3,10 +3,20 @@ import { addSqlFilter, transformFieldPath } from 'utils/sql-filter';
 
 export { addSqlFilter, getFilterSQL, transformFieldPath } from 'utils/sql-filter';
 
-export function getQueryOrderBySQL(params: Pick<QueryTableDataParams, 'sort' | 'sortField' | 'timeField'>) {
+function getVariantSortExpression(fieldPath: string, variantPath: string[], type?: string) {
+    const expression = transformFieldPath(fieldPath, variantPath);
+    const normalizedType = type?.toUpperCase();
+    const castType = normalizedType?.includes('BOOLEAN') ? 'BOOLEAN' : normalizedType?.includes('DOUBLE') || normalizedType?.includes('FLOAT') || normalizedType?.includes('DECIMAL') || normalizedType?.includes('INT') ? 'DOUBLE' : 'STRING';
+    return `CAST(${expression} AS ${castType})`;
+}
+
+export function getQueryOrderBySQL(params: Pick<QueryTableDataParams, 'sort' | 'sortField' | 'timeField'> & { sortFieldPath?: string[]; sortFieldType?: string }) {
     const sortField = params.sortField?.trim() || params.timeField;
     const direction = params.sort === 'ASC' ? 'ASC' : 'DESC';
-    const primaryOrder = `${transformFieldPath(sortField)} ${direction}`;
+    const primaryExpression = params.sortFieldPath?.length
+        ? getVariantSortExpression(sortField, params.sortFieldPath, params.sortFieldType)
+        : transformFieldPath(sortField);
+    const primaryOrder = `${primaryExpression} ${direction}`;
 
     if (sortField === params.timeField) {
         return primaryOrder;

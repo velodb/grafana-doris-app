@@ -21,7 +21,6 @@ import {
     discoverRowsExpandedAtom,
     discoverColumnLayoutsAtom,
 } from 'store/discover';
-import { get } from 'lodash-es';
 import { Button as AntButton, Tooltip } from 'antd';
 import SDCollapsibleTable from 'components/selectdb-ui/sd-collapsible-table';
 import { ColumnStyleWrapper, HoverStyle } from './discover-content.style';
@@ -32,9 +31,11 @@ import SurroundingLogs from 'components/surrounding-logs';
 import TraceDetail from 'components/trace-detail';
 import { usePluginContext } from '@grafana/data';
 import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
-import { formatFieldDisplayValue, formatTimestampToDateTime, isComplexType, isValidTimeFieldType, parseJsonLikeValue } from 'utils/data';
+import { formatFieldDisplayValue, formatTimestampToDateTime, isComplexType, isValidTimeFieldType, isVariantType, parseJsonLikeValue } from 'utils/data';
 import { DiscoverQueryState, DiscoverSort } from 'types/discover';
 import { reconcileColumnOrder, reconcileColumnSizing } from 'utils/column-layout';
+import { VariantValueViewer } from './variant-value-viewer';
+import { getVariantFieldValue } from 'utils/variant-fields';
 
 const EXPAND_COLUMN_ID = '__expand';
 const TIME_COLUMN_ID = '__time';
@@ -287,6 +288,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                 {subTableData.map((item: any) => {
                                     const fieldValue = formatFieldDisplayValue(item.value, 'compact');
                                     const fieldName = item.field;
+                                    const fieldType = tableFields.find((field: any) => field.Field === fieldName)?.Type;
                                     const tableRowStyle = css`
                                         &:hover {
                                             .filter-table-content {
@@ -331,7 +333,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                                         word-break: break-all;
                                                     `}
                                                 >
-                                                    {fieldValue}
+                                                    {isVariantType(fieldType) ? <VariantValueViewer value={item.value} /> : fieldValue}
                                                 </div>
                                             </td>
                                         </tr>
@@ -341,26 +343,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                         </table>
                     )}
                     {state[1].active && (
-                        <div>
-                            <pre
-                                className={css`
-                                    padding: 16px;
-                                    margin: 0;
-                                    overflow-x: auto;
-                                    white-space: pre-wrap;
-                                    word-break: break-all;
-                                    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-                                    font-size: 12px;
-                                    line-height: 1.5;
-                                    ${theme.isDark ? 'background-color: #1e1e1e; color: #d4d4d4;' : 'background-color: #f5f5f5; color: #333;'}
-                                    border-radius: 4px;
-                                    max-height: 400px;
-                                    overflow-y: auto;
-                                `}
-                            >
-                                {formatFieldDisplayValue(processedData, 'pretty')}
-                            </pre>
-                        </div>
+                        <VariantValueViewer value={processedData} />
                     )}
                 </TabContent>
                 <Tooltip title="Surrounding Items will ignore the existing interface's filter conditions and view the context through time.">
@@ -558,7 +541,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                 ...selectedFields.map((field: any) => {
                     return {
                         id: getFieldColumnId(field.Field),
-                        accessorFn: (row: any) => get(row._original, field.Field),
+                        accessorFn: (row: any) => getVariantFieldValue(row._original, field),
                         size: 240,
                         minSize: 80,
                         maxSize: 800,
@@ -588,9 +571,9 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                 />
                             </div>
                         ),
-                        cell: ({ row, getValue }: any) => {
-                            // let fieldValue = row.original._original[field.Field];
-                            const fieldValue = formatFieldDisplayValue(get(row.original._original, field.Field), 'compact');
+                        cell: ({ row }: any) => {
+                            const rawFieldValue = getVariantFieldValue(row.original._original, field);
+                            const fieldValue = formatFieldDisplayValue(rawFieldValue, 'compact');
                             const fieldName = field.Field;
                             const fieldType = field.Type;
                             return (
@@ -615,7 +598,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                                 word-break: break-all;
                                             `}
                                         >
-                                            {field.value === 'trace_id' ? <AntButton
+                                            {isVariantType(fieldType) ? <VariantValueViewer value={rawFieldValue} /> : field.value === 'trace_id' ? <AntButton
                                                 className={css`padding-left: 0px;`}
                                                 onClick={() => {
                                                     if (isTargetLogTable && targetTraceTable) {
@@ -691,8 +674,14 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
             : nextColumn.id.startsWith(FIELD_COLUMN_PREFIX)
                 ? nextColumn.id.slice(FIELD_COLUMN_PREFIX.length)
                 : currentTimeField;
-        onSortChange({ field, direction: nextColumn.desc ? 'DESC' : 'ASC' });
-    }, [currentTimeField, onSortChange, tableSorting]);
+        const selectedField = selectedFields.find((item: any) => item.Field === field);
+        onSortChange({
+            field,
+            direction: nextColumn.desc ? 'DESC' : 'ASC',
+            variantPath: selectedField?.variantPath,
+            variantType: selectedField?.Type,
+        });
+    }, [currentTimeField, onSortChange, selectedFields, tableSorting]);
 
     const emptyContent = queryState.status === 'error' ? (
         <div role="status" className={css`padding: 32px 16px; text-align: center;`}>

@@ -45,7 +45,9 @@ export const getFieldType = (columnType: string | undefined) => {
 };
 
 export const isVariantType = (columnType: string | undefined) => {
-    return String(columnType || '').toLocaleUpperCase().includes('VARIANT');
+    return String(columnType || '')
+        .toLocaleUpperCase()
+        .includes('VARIANT');
 };
 
 export function parseJsonLikeValue(value: any): any {
@@ -114,12 +116,7 @@ export function formatFieldDisplayValue(value: any, mode: 'compact' | 'pretty' =
 }
 
 export function escapeHtml(value: any): string {
-    return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+    return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 export const DISCOVER_DEFAULT_STATUS: DiscoverCurrent = {
@@ -633,6 +630,7 @@ export function convertColumnToRowViaFieldsType(frame: any, fields: any): Array<
 
     const numRows = columns[0].length;
     const rows: Array<Record<string, any>> = [];
+    const fieldsByName = new Map((Array.isArray(fields) ? fields : []).map((field: any) => [field?.Field, field]));
 
     for (let i = 0; i < numRows; i++) {
         const row: Record<string, any> = {};
@@ -643,7 +641,7 @@ export function convertColumnToRowViaFieldsType(frame: any, fields: any): Array<
                 row[fieldNames[j]] = formatTimestampToDateTime(row[fieldNames[j]], frame.schema.fields[j].precision || 3);
                 // row[fieldNames[j]] = dayjs.utc(row[fieldNames[j]]).locale(currentLocale).format('YYYY-MM-DD HH:mm:ss.SSS');
             }
-            const currentFieldInfo = fields.filter((item: any) => item.Field === frame.schema.fields[j].name)[0];
+            const currentFieldInfo = fieldsByName.get(frame.schema.fields[j].name);
             // 如果是 VARIANT 类型，转换为 JSON 对象
             if (currentFieldInfo && isVariantType(currentFieldInfo.Type)) {
                 row[fieldNames[j]] = parseJsonLikeValue(row[fieldNames[j]]);
@@ -757,12 +755,7 @@ function normalizeTraceLogs(item: any) {
 
         return {
             timestamp: normalizeTraceLogTimestamp(parsedEvent.timestamp ?? parsedEvent.time),
-            fields: [
-                ...(eventName !== undefined ? [{ key: 'event', value: eventName }] : []),
-                ...existingFields,
-                ...eventAttributes,
-                ...extraFields,
-            ],
+            fields: [...(eventName !== undefined ? [{ key: 'event', value: eventName }] : []), ...existingFields, ...eventAttributes, ...extraFields],
         };
     });
 }
@@ -854,7 +847,7 @@ export function generateHighlightedResults(data: { search_value: string; indexes
                         highlightValue = itemValue;
                     } else if (strValue.includes(parsedKeyword)) {
                         // highlightValue = highlightDelimiter(strValue, parsedKeyword);
-                          highlightValue = strValue;
+                        highlightValue = strValue;
                     }
                 } else {
                     const tokenizedAns = Array.from(jsTokens(strValue)).map(item => item.value);
@@ -914,4 +907,4 @@ export function generateHighlightedResults(data: { search_value: string; indexes
     return _sourceResult;
 }
 
-export const QUERY_TRACE_FIELDS = ['trace_id','span_id','parent_span_id','span_name','service_name']
+export const QUERY_TRACE_FIELDS = ['trace_id', 'span_id', 'parent_span_id', 'span_name', 'service_name'];

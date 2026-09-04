@@ -2,19 +2,22 @@ import { useAtom, useAtomValue } from 'jotai';
 import React from 'react';
 import { nanoid } from 'nanoid';
 import { Select, InlineField, InlineFieldRow, InlineSwitch, Button, Input, Field } from '@grafana/ui';
-import { tableFieldsAtom, dataFilterAtom, tableFieldValuesAtom, tableDataAtom, indexesAtom } from 'store/discover';
+import { tableFieldsAtom, variantFieldsAtom, dataFilterAtom, tableFieldValuesAtom, tableDataAtom, indexesAtom } from 'store/discover';
 import { DataFilterType, Operator } from 'types/type';
 import { OPERATORS, getFieldType } from 'utils/data';
 import { Controller, useForm } from 'react-hook-form';
 import { containerStyle, rowStyle, colStyle, footerStyle } from './discover-filter.style';
 import { uniqBy } from 'lodash-es';
+import { flattenVariantLeaves } from 'utils/variant-fields';
 
 export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void; dataFilterValue?: DataFilterType }) {
     const tableFields = useAtomValue(tableFieldsAtom);
+    const variantFields = useAtomValue(variantFieldsAtom);
     const [dataFilter, setDataFilter] = useAtom(dataFilterAtom);
     const [tableFieldValue, setTableFieldValue] = useAtom(tableFieldValuesAtom);
     const tableData = useAtomValue(tableDataAtom);
     const indexes = useAtomValue(indexesAtom);
+    const allFields = React.useMemo(() => [...tableFields, ...flattenVariantLeaves(variantFields)], [tableFields, variantFields]);
 
     const {
         control,
@@ -78,9 +81,9 @@ export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void;
         if (!fieldName) {
             return '';
         }
-        const tf = tableFields.find((f: any) => f.Field === fieldName);
+        const tf = allFields.find((f: any) => f.Field === fieldName);
         return getFieldType(tf?.Type);
-    }, [field, tableFields]);
+    }, [allFields, field]);
 
     const isNumberField = selectedFieldType === 'NUMBER';
     const isBooleanField = selectedFieldType === 'BOOLEAN';
@@ -205,6 +208,7 @@ export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void;
             id,
             fieldName: field.value,
             variantKey: field.value === dataFilterValue?.fieldName ? dataFilterValue?.variantKey : undefined,
+            variantPath: allFields.find((item: any) => item.Field === field.value)?.variantPath,
             operator: opValue,
             // Only persist label when showLabel is true. Otherwise ensure it's empty.
             label: showLabel ? label : '',
@@ -321,7 +325,7 @@ export function FilterContent({ onHide, dataFilterValue }: { onHide: () => void;
                                         field.onChange(selected)
                                     }}
 
-                                    options={tableFields.map(f => ({
+                                    options={allFields.map(f => ({
                                         label: f.Field,
                                         value: f.Field,
                                     }))}

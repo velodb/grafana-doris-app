@@ -16,6 +16,7 @@ import {
     locationAtom,
     // currentClusterAtom,
     tableFieldsAtom,
+    variantFieldsAtom,
     timeFieldsAtom,
     currentDateAtom,
     currentTimeFieldAtom,
@@ -33,26 +34,15 @@ import {
     dataFilterAtom,
 } from 'store/discover';
 import { DISCOVER_SHORTCUTS, getLatestTime, isValidTimeFieldType } from 'utils/data';
-import { Select, Field, Button, useTheme2, TimeRangeInput } from '@grafana/ui';
+import { Select, Field, Button, Icon, Tooltip, useTheme2, TimeRangeInput } from '@grafana/ui';
 import { getApplicationValuesService, getDatabases, getFieldsService, getIndexesService, getTablesService } from 'services/metaservice';
 import { Subscription } from 'rxjs';
 import Lucene from './lucene';
 import { toError } from 'utils/errors';
+import { getLuceneFieldsWithoutInvertedIndex } from 'utils/query-parser/lucene-index-warning';
 import { useDatasourcePermissions } from 'hooks/useDatasourcePermissions';
-import {
-    buildAbsoluteTimeRange,
-    buildRelativeTimeRange,
-    formatTimeInZone,
-    normalizeTimeZone,
-    parseTimeInZone,
-    toDayjsRange,
-} from 'utils/time';
-import {
-    APPLICATION_FILTER_ID,
-    applyApplicationFilter,
-    getCommittedApplication,
-    getConfiguredApplicationAttributeKey,
-} from './application-filter';
+import { buildAbsoluteTimeRange, buildRelativeTimeRange, formatTimeInZone, normalizeTimeZone, parseTimeInZone, toDayjsRange } from 'utils/time';
+import { APPLICATION_FILTER_ID, applyApplicationFilter, getCommittedApplication, getConfiguredApplicationAttributeKey } from './application-filter';
 
 function getStoredValue<T>(key: string): T | undefined {
     if (typeof window === 'undefined') {
@@ -163,6 +153,7 @@ export default function DiscoverHeader(
     const [loc, setLoc] = useAtom(locationAtom);
     // const [currentCluster, setCurrentCluster] = useAtom(currentClusterAtom);
     const [tableFields, setTableFields] = useAtom(tableFieldsAtom);
+    const setVariantFields = useSetAtom(variantFieldsAtom);
     const [timeFields, setTimeFields] = useAtom(timeFieldsAtom);
     const [_currentDate, setCurrentDate] = useAtom(currentDateAtom);
     const currentTimeField = useAtomValue(currentTimeFieldAtom);
@@ -190,6 +181,13 @@ export default function DiscoverHeader(
     const [applicationOptionsLoading, setApplicationOptionsLoading] = React.useState(false);
     const [resolvedFieldsContext, setResolvedFieldsContext] = React.useState('');
     const searchMode = searchType === 'Search';
+    const indexes = useAtomValue(indexesAtom);
+    const fieldsWithoutInvertedIndex = React.useMemo(
+        () => (searchType === 'Lucene' ? getLuceneFieldsWithoutInvertedIndex(searchValue, indexes, tableFields) : []),
+        [indexes, searchType, searchValue, tableFields],
+    );
+    const warningFields = fieldsWithoutInvertedIndex.slice(0, 3).join(', ');
+    const remainingWarningFieldCount = fieldsWithoutInvertedIndex.length - 3;
 
     const selectdbDS = useAtomValue(selectedDatasourceAtom);
     const theme = useTheme2();
@@ -197,9 +195,7 @@ export default function DiscoverHeader(
     const jsonData = context.meta.jsonData || {};
     const configuredLogsConfig = (jsonData as AppPluginSettings).logsConfig;
     const logsConfig = mergeLogsConfig(configuredLogsConfig);
-    const applicationAttributeKey = getConfiguredApplicationAttributeKey(
-        configuredLogsConfig?.applicationAttributeKey,
-    );
+    const applicationAttributeKey = getConfiguredApplicationAttributeKey(configuredLogsConfig?.applicationAttributeKey);
     const isApplicationFilterConfigured = Boolean(applicationAttributeKey);
     const {
         allowedDatasources,
@@ -211,9 +207,7 @@ export default function DiscoverHeader(
     const locSearch = loc?.searchParams?.toString() ?? '';
     const fieldsContext = `${selectdbDS?.uid || ''}\u0000${discoverCurrent.database}\u0000${currentTable}`;
     const hasResourceAttributes =
-        isApplicationFilterConfigured &&
-        resolvedFieldsContext === fieldsContext &&
-        tableFields.some((field: any) => field?.Field === 'resource_attributes');
+        isApplicationFilterConfigured && resolvedFieldsContext === fieldsContext && tableFields.some((field: any) => field?.Field === 'resource_attributes');
     const committedApplication = getCommittedApplication(dataFilter, applicationAttributeKey);
     const applicationStartDate = _currentDate[0] ? formatTimeInZone(_currentDate[0], timeZone) : '';
     const applicationEndDate = _currentDate[1] ? formatTimeInZone(_currentDate[1], timeZone) : '';
@@ -283,24 +277,27 @@ export default function DiscoverHeader(
         [setLoc],
     );
 
-    const fetchDatabases = React.useCallback((ds: any) => {
-        if (!ds) {
-            return undefined;
-        }
+    const fetchDatabases = React.useCallback(
+        (ds: any) => {
+            if (!ds) {
+                return undefined;
+            }
 
-        return getDatabases(ds).subscribe({
-            next: (resp: any) => {
-                const { data, ok } = resp;
-                if (ok) {
-                    const frame = toDataFrame(data.results.getDatabases.frames[0]);
-                    const values = Array.from(frame.fields[0].values);
-                    const options = values.map((item: string) => ({ label: item, value: item }));
-                    setDatabases(options);
-                }
-            },
-            error: (err: any) => logError(toError(err), { source: 'DiscoverHeader', action: 'fetchDatabases' }),
-        });
-    }, [setDatabases]);
+            return getDatabases(ds).subscribe({
+                next: (resp: any) => {
+                    const { data, ok } = resp;
+                    if (ok) {
+                        const frame = toDataFrame(data.results.getDatabases.frames[0]);
+                        const values = Array.from(frame.fields[0].values);
+                        const options = values.map((item: string) => ({ label: item, value: item }));
+                        setDatabases(options);
+                    }
+                },
+                error: (err: any) => logError(toError(err), { source: 'DiscoverHeader', action: 'fetchDatabases' }),
+            });
+        },
+        [setDatabases],
+    );
 
     useEffect(() => {
         if (!selectdbDS) {
@@ -350,6 +347,7 @@ export default function DiscoverHeader(
                     });
 
                     setTableFields(tableFields);
+                    setVariantFields([]);
                     setResolvedFieldsContext(`${effectiveDatasource.uid || ''}\u0000${effectiveDatabase}\u0000${selectedTable.value}`);
 
                     if (values) {
@@ -365,9 +363,7 @@ export default function DiscoverHeader(
                             });
 
                         const preferredTimeField = (initOptions?.preferredTimeField ?? currentTimeField ?? '').trim();
-                        const targetTimeField = options.some(option => option.value === preferredTimeField)
-                            ? preferredTimeField
-                            : options[0]?.value || '';
+                        const targetTimeField = options.some(option => option.value === preferredTimeField) ? preferredTimeField : options[0]?.value || '';
 
                         setDiscoverCurrent(prev => ({
                             ...prev,
@@ -412,15 +408,9 @@ export default function DiscoverHeader(
                         setCurrentIndex([]);
                         return;
                     }
-                    const values = Array.from(
-                        (frame.fields.find(field => field.name === 'Key_name') ?? frame.fields[2])?.values ?? [],
-                    );
-                    const columnNames = Array.from(
-                        (frame.fields.find(field => field.name === 'Column_name') ?? frame.fields[4])?.values ?? [],
-                    );
-                    const indexesTypes = Array.from(
-                        (frame.fields.find(field => field.name === 'Index_type') ?? frame.fields[10])?.values ?? [],
-                    );
+                    const values = Array.from((frame.fields.find(field => field.name === 'Key_name') ?? frame.fields[2])?.values ?? []);
+                    const columnNames = Array.from((frame.fields.find(field => field.name === 'Column_name') ?? frame.fields[4])?.values ?? []);
+                    const indexesTypes = Array.from((frame.fields.find(field => field.name === 'Index_type') ?? frame.fields[10])?.values ?? []);
 
                     if (!values || values.length === 0) {
                         setIndexes([]);
@@ -475,10 +465,7 @@ export default function DiscoverHeader(
         const persistedTable = urlTable || currentTable || persistedTableStorage || discoverCurrent.table || persistedDiscoverCurrentStorage?.table || '';
         const persistedTimeField = urlTimeField || discoverCurrent.timeField || persistedDiscoverCurrentStorage?.timeField || '';
         const requestedDatasourceUid = persistedDatasourceUid || configuredDatasourceUid || '';
-        const defaultDatasourceUid =
-            requestedDatasourceUid && allowedDatasourceUids.has(requestedDatasourceUid)
-                ? requestedDatasourceUid
-                : allowedDatasources[0]?.uid || '';
+        const defaultDatasourceUid = requestedDatasourceUid && allowedDatasourceUids.has(requestedDatasourceUid) ? requestedDatasourceUid : allowedDatasources[0]?.uid || '';
         const defaultDatabase = persistedDatabase || logsConfig.database || '';
         const defaultLogsTable = persistedTable || logsConfig.logsTable || '';
         const hasRelativeTimeParams = Boolean(urlTimeRawFrom && urlTimeRawTo);
@@ -552,8 +539,7 @@ export default function DiscoverHeader(
             const ds =
                 selectedDatasource?.uid === defaultDatasourceUid
                     ? selectedDatasource
-                    : allowedDatasources.find(datasource => datasource.uid === defaultDatasourceUid) ??
-                        await getDataSourceSrv().get({ uid: defaultDatasourceUid });
+                    : allowedDatasources.find(datasource => datasource.uid === defaultDatasourceUid) ?? (await getDataSourceSrv().get({ uid: defaultDatasourceUid }));
             if (!ds) {
                 return;
             }
@@ -571,8 +557,7 @@ export default function DiscoverHeader(
                         const frame = toDataFrame(data.results.getTables.frames[0]);
                         const values = Array.from(frame.fields[0].values);
                         const options = values.map((item: string) => ({ label: item, value: item }));
-                        const targetTable =
-                            options.find(option => option.value === defaultLogsTable)?.value || options[0]?.value || '';
+                        const targetTable = options.find(option => option.value === defaultLogsTable)?.value || options[0]?.value || '';
 
                         setTables(options);
                         setCurrentTable(targetTable);
@@ -581,7 +566,7 @@ export default function DiscoverHeader(
                             database: defaultDatabase,
                             table: targetTable,
                         }));
-                        
+
                         if (targetTable) {
                             getFields(
                                 { value: targetTable },
@@ -636,11 +621,7 @@ export default function DiscoverHeader(
         const hasRelativeTimeParams = Boolean(urlTimeRawFrom && urlTimeRawTo);
         const hasAbsoluteTimeParams = Boolean(urlStartTime && urlEndTime);
         const isRelativeTimeSynced = hasRelativeTimeParams && rawFrom === urlTimeRawFrom && rawTo === urlTimeRawTo;
-        const isAbsoluteTimeSynced =
-            hasAbsoluteTimeParams &&
-            !shouldShareRelativeRaw &&
-            currentStartTime === urlStartTimeParam &&
-            currentEndTime === urlEndTimeParam;
+        const isAbsoluteTimeSynced = hasAbsoluteTimeParams && !shouldShareRelativeRaw && currentStartTime === urlStartTimeParam && currentEndTime === urlEndTimeParam;
 
         if ((hasRelativeTimeParams || hasAbsoluteTimeParams) && !isRelativeTimeSynced && !isAbsoluteTimeSynced) {
             return;
@@ -659,22 +640,27 @@ export default function DiscoverHeader(
             timeRawFrom: shouldShareRelativeRaw ? rawFrom : undefined,
             timeRawTo: shouldShareRelativeRaw ? rawTo : undefined,
         });
-    }, [currentTable, currentTimeField, _currentDate, discoverCurrent.database, discoverCurrent.table, locSearch, searchType, searchValue, selectedDatasource, timeRange?.raw, timeZone, updateShareParams]);
+    }, [
+        currentTable,
+        currentTimeField,
+        _currentDate,
+        discoverCurrent.database,
+        discoverCurrent.table,
+        locSearch,
+        searchType,
+        searchValue,
+        selectedDatasource,
+        timeRange?.raw,
+        timeZone,
+        updateShareParams,
+    ]);
 
     useEffect(() => {
         setApplicationDraft(committedApplication);
     }, [committedApplication]);
 
     useEffect(() => {
-        if (
-            !hasResourceAttributes ||
-            !selectdbDS ||
-            !discoverCurrent.database ||
-            !currentTable ||
-            !currentTimeField ||
-            !applicationStartDate ||
-            !applicationEndDate
-        ) {
+        if (!hasResourceAttributes || !selectdbDS || !discoverCurrent.database || !currentTable || !currentTimeField || !applicationStartDate || !applicationEndDate) {
             setApplicationOptions([]);
             setApplicationOptionsLoading(false);
             return;
@@ -721,16 +707,7 @@ export default function DiscoverHeader(
         });
 
         return () => subscription.unsubscribe();
-    }, [
-        applicationAttributeKey,
-        applicationEndDate,
-        applicationStartDate,
-        currentTable,
-        currentTimeField,
-        discoverCurrent.database,
-        hasResourceAttributes,
-        selectdbDS,
-    ]);
+    }, [applicationAttributeKey, applicationEndDate, applicationStartDate, currentTable, currentTimeField, discoverCurrent.database, hasResourceAttributes, selectdbDS]);
 
     return (
         <div
@@ -743,31 +720,28 @@ export default function DiscoverHeader(
             `}
         >
             <DiscoverHeaderSearch className="h-8 rounded border border-solid border-n9 dark:border-n7">
-                <Field
-                    label="Datasource"
-                    description={datasourcePermissionsError ? 'Failed to load team datasource permissions' : undefined}
-                >
+                <Field label="Datasource" description={datasourcePermissionsError ? 'Failed to load team datasource permissions' : undefined}>
                     {/* filter 这个版本无效 */}
                     <DataSourcePicker
-                         width={15}
-                         type={'mysql'}
-                         current={selectedDatasource}
-                         placeholder="Choose"
-                         noDefault
-                         disabled={datasourcePermissionsLoading || allowedDatasources.length === 0}
-                         isLoading={datasourcePermissionsLoading}
-                         filter={ds => ds.type === 'mysql' && allowedDatasourceUids.has(ds.uid)}
-                         onChange={item => {
-                             if (!allowedDatasourceUids.has(item.uid)) {
-                                 return;
-                             }
-                             resetApplicationFilter();
-                             setSelectedDatasource(item);
-                             // Always fetch databases even if the same datasource is selected
-                             fetchDatabases(item);
-                         }}
-                     />
-                 </Field>
+                        width={15}
+                        type={'mysql'}
+                        current={selectedDatasource}
+                        placeholder="Choose"
+                        noDefault
+                        disabled={datasourcePermissionsLoading || allowedDatasources.length === 0}
+                        isLoading={datasourcePermissionsLoading}
+                        filter={ds => ds.type === 'mysql' && allowedDatasourceUids.has(ds.uid)}
+                        onChange={item => {
+                            if (!allowedDatasourceUids.has(item.uid)) {
+                                return;
+                            }
+                            resetApplicationFilter();
+                            setSelectedDatasource(item);
+                            // Always fetch databases even if the same datasource is selected
+                            fetchDatabases(item);
+                        }}
+                    />
+                </Field>
                 {/* 需要从数据源中获取库表信息 */}
                 <Field label="Database" style={{ marginLeft: 8 }}>
                     <Select
@@ -841,10 +815,7 @@ export default function DiscoverHeader(
                     </Field>
                 ) : (
                     <Field label={searchMode ? 'Search' : 'SQL'} style={{ width: '100%' }}>
-                        <SQLSearch
-                            style={{ flex: '1' }}
-                            onQuerying={commitApplicationAndQuery}
-                        />
+                        <SQLSearch style={{ flex: '1' }} onQuerying={commitApplicationAndQuery} />
                     </Field>
                 )}
             </DiscoverHeaderSearch>
@@ -905,7 +876,10 @@ export default function DiscoverHeader(
                                 setTimeRange({
                                     from: dateTime(timeRange.from.toDate()),
                                     to: dateTime(timeRange.to.toDate()),
-                                    raw: hasRelativeRaw && rawFrom && rawTo ? { from: rawFrom, to: rawTo } : { from: dateTime(timeRange.from.toDate()), to: dateTime(timeRange.to.toDate()) },
+                                    raw:
+                                        hasRelativeRaw && rawFrom && rawTo
+                                            ? { from: rawFrom, to: rawTo }
+                                            : { from: dateTime(timeRange.from.toDate()), to: dateTime(timeRange.to.toDate()) },
                                 });
                             }}
                             onChangeTimeZone={(nextTimeZone: TimeZone) => {
@@ -919,47 +893,64 @@ export default function DiscoverHeader(
                 </>
             )}
             <Field label="">
-                <Button
-                    onClick={() => {
-                        const latestTime = getLatestTime(activeItem?.key as string);
-                        if (latestTime) {
-                            const [latestStartTime, latestEndTime] = latestTime;
-                            const currentShortcut = DISCOVER_SHORTCUTS.find(shortcut => shortcut.key === activeItem?.key);
-                            const rawFrom = normalizeRawTimeValue(currentShortcut?.raw?.from);
-                            const rawTo = normalizeRawTimeValue(currentShortcut?.raw?.to);
-                            setLoc(prev => {
-                                const searchParams = new URLSearchParams(prev?.searchParams?.toString() ?? '');
-                                searchParams?.delete('startTime');
-                                searchParams?.delete('endTime');
-                                if (rawFrom && rawTo) {
-                                    searchParams?.set('timeRawFrom', rawFrom);
-                                    searchParams?.set('timeRawTo', rawTo);
-                                } else {
-                                    searchParams?.delete('timeRawFrom');
-                                    searchParams?.delete('timeRawTo');
-                                }
-                                return {
+                <div style={{ alignItems: 'center', display: 'flex', gap: theme.spacing(1) }}>
+                    {fieldsWithoutInvertedIndex.length > 0 ? (
+                        <Tooltip
+                            content={
+                                <span>
+                                    {warningFields}
+                                    {remainingWarningFieldCount > 0 ? ` 等 ${fieldsWithoutInvertedIndex.length} 个字段` : ''} 未配置倒排索引，Lucene 查询可能较慢。
+                                </span>
+                            }
+                            placement="top"
+                        >
+                            <span aria-label="Lucene 倒排索引告警" style={{ color: theme.colors.warning.text, cursor: 'help', display: 'inline-flex' }}>
+                                <Icon name="exclamation-triangle" size="sm" />
+                            </span>
+                        </Tooltip>
+                    ) : null}
+                    <Button
+                        onClick={() => {
+                            const latestTime = getLatestTime(activeItem?.key as string);
+                            if (latestTime) {
+                                const [latestStartTime, latestEndTime] = latestTime;
+                                const currentShortcut = DISCOVER_SHORTCUTS.find(shortcut => shortcut.key === activeItem?.key);
+                                const rawFrom = normalizeRawTimeValue(currentShortcut?.raw?.from);
+                                const rawTo = normalizeRawTimeValue(currentShortcut?.raw?.to);
+                                setLoc(prev => {
+                                    const searchParams = new URLSearchParams(prev?.searchParams?.toString() ?? '');
+                                    searchParams?.delete('startTime');
+                                    searchParams?.delete('endTime');
+                                    if (rawFrom && rawTo) {
+                                        searchParams?.set('timeRawFrom', rawFrom);
+                                        searchParams?.set('timeRawTo', rawTo);
+                                    } else {
+                                        searchParams?.delete('timeRawFrom');
+                                        searchParams?.delete('timeRawTo');
+                                    }
+                                    return {
+                                        ...prev,
+                                        searchParams,
+                                    };
+                                });
+                                setCurrentDate([dayjs(latestStartTime), dayjs(latestEndTime)]);
+                                setTimeRange((prev: any) => ({
                                     ...prev,
-                                    searchParams,
-                                };
-                            });
-                            setCurrentDate([dayjs(latestStartTime), dayjs(latestEndTime)]);
-                            setTimeRange((prev: any) => ({
-                                ...prev,
-                                from: dateTime(dayjs(latestStartTime).toDate()),
-                                to: dateTime(dayjs(latestEndTime).toDate()),
-                                raw: rawFrom && rawTo ? { from: rawFrom, to: rawTo } : buildAbsoluteTimeRange(dayjs(latestStartTime), dayjs(latestEndTime)).raw,
-                            }));
-                        }
-                        commitApplicationAndQuery();
-                    }}
-                    variant="primary"
-                    className="h-8"
-                    icon={loading ? 'fa fa-spinner' : 'sync'}
-                    disabled={!currentTimeField}
-                >
-                    {`Query`}
-                </Button>
+                                    from: dateTime(dayjs(latestStartTime).toDate()),
+                                    to: dateTime(dayjs(latestEndTime).toDate()),
+                                    raw: rawFrom && rawTo ? { from: rawFrom, to: rawTo } : buildAbsoluteTimeRange(dayjs(latestStartTime), dayjs(latestEndTime)).raw,
+                                }));
+                            }
+                            commitApplicationAndQuery();
+                        }}
+                        variant="primary"
+                        className="h-8"
+                        icon={loading ? 'fa fa-spinner' : 'sync'}
+                        disabled={!currentTimeField}
+                    >
+                        {`Query`}
+                    </Button>
+                </div>
             </Field>
         </div>
     );

@@ -12,8 +12,8 @@ export function quoteSqlLiteral(value: string): string {
     return `'${escapeSqlLiteral(value)}'`;
 }
 
-export function transformFieldPath(fieldPath: string): string {
-    const parts = fieldPath.split('.');
+export function transformFieldPath(fieldPath: string, variantPath?: string[]): string {
+    const parts = variantPath?.length ? [...variantPath] : fieldPath.split('.');
     const root = parts.shift() || '';
 
     return (
@@ -22,7 +22,10 @@ export function transformFieldPath(fieldPath: string): string {
     );
 }
 
-function getFilterFieldReference({ fieldName, variantKey }: DataFilterType): string {
+function getFilterFieldReference({ fieldName, variantKey, variantPath }: DataFilterType): string {
+    if (variantPath?.length) {
+        return transformFieldPath(fieldName, variantPath);
+    }
     if (variantKey !== undefined) {
         return `${escapeSqlIdentifier(fieldName)}[${quoteSqlLiteral(variantKey)}]`;
     }

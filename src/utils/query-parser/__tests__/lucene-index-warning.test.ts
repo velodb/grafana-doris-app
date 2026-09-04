@@ -55,4 +55,14 @@ describe('getLuceneFieldsWithoutInvertedIndex', () => {
             'attrs.message',
         ]);
     });
+
+    it('recognizes a VARIANT root inverted index for nested text searches', () => {
+        expect(
+            getLuceneFieldsWithoutInvertedIndex(
+                'attrs.message:error',
+                [{ columnName: 'attrs', type: 'INVERTED' }],
+                tableFields,
+            ),
+        ).toEqual([]);
+    });
 });

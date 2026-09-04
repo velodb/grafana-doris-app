@@ -80,17 +80,36 @@ function collectTextSearchFields(ast: lucene.AST, fields: Set<string>) {
     }
 }
 
-function hasInvertedIndex(field: string, indexes: IndexLike[]): boolean {
+function hasInvertedIndex(field: string, indexes: IndexLike[], tableFields: FieldLike[]): boolean {
     const normalizedField = normalizeName(field);
-    return indexes.some(index => {
+    const hasIndexForColumn = (column: string) => indexes.some(index => {
         const indexType = String(index?.type ?? '').toUpperCase();
         if (!indexType.includes('INVERT')) {
             return false;
         }
 
         const indexedColumn = normalizeName(index?.columnName ?? index?.Field ?? index?.field ?? index?.value);
-        return indexedColumn === normalizedField;
+        return indexedColumn === normalizeName(column);
     });
+
+    if (hasIndexForColumn(normalizedField)) {
+        return true;
+    }
+
+    // Doris builds a VARIANT inverted index for its subpaths as well. A Lucene
+    // field such as `resource_attributes.app` therefore inherits the inverted
+    // index declared on the `resource_attributes` root column.
+    const rootField = field.split('.')[0];
+    if (normalizeName(rootField) === normalizedField) {
+        return false;
+    }
+
+    const rootMetadata = tableFields.find(
+        item => normalizeName(item?.Field ?? item?.field ?? item?.value) === normalizeName(rootField),
+    );
+    return Boolean(rootMetadata && getPrimitiveFieldType(rootMetadata.Type ?? rootMetadata.type) === 'TEXT' &&
+        String(rootMetadata.Type ?? rootMetadata.type ?? '').toUpperCase().includes('VARIANT') &&
+        hasIndexForColumn(rootField));
 }
 
 function findFieldMetadata(field: string, tableFields: FieldLike[]): FieldLike | undefined {
@@ -147,7 +166,9 @@ export function getLuceneFieldsWithoutInvertedIndex(query: string, indexes: Inde
         const fields = new Set<string>();
         collectTextSearchFields(ast, fields);
 
-        return Array.from(fields).filter(field => shouldWarnForField(field, tableFields) && !hasInvertedIndex(field, indexes));
+        return Array.from(fields).filter(
+            field => shouldWarnForField(field, tableFields) && !hasInvertedIndex(field, indexes, tableFields),
+        );
     } catch (error) {
         return [];
     }
