@@ -2,7 +2,7 @@ name: grafana-doris-app-test
 
 services:
   doris:
-    image: apache/doris:4.0.3-all-slim
+    image: apache/doris:all-in-one-4.1.3
     container_name: velodb-doris-app-test
     restart: unless-stopped
     environment:
@@ -22,8 +22,10 @@ services:
       - "${DORIS_HTTP_PORT:-18030}:8030"
       - "${DORIS_MYSQL_PORT:-19030}:9030"
     volumes:
-      - doris-fe-meta:/opt/apache-doris/fe/doris-meta
-      - doris-be-storage:/opt/apache-doris/be/storage
+      - doris-fe-meta-4-1-3:/opt/apache-doris/fe/doris-meta
+      - doris-be-storage-4-1-3:/opt/apache-doris/be/storage
+      - ./enterprise-plugins:/opt/apache-doris/fe/plugins/authentication/oidc:ro
+      - ./doris-fe.conf:/opt/apache-doris/fe/conf/fe_custom.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "mysql -h127.0.0.1 -P9030 -uroot -e 'SELECT 1' >/dev/null 2>&1"]
       interval: 5s
@@ -32,7 +34,7 @@ services:
       start_period: 30s
 
   doris-init:
-    image: apache/doris:4.0.3-all-slim
+    image: apache/doris:all-in-one-4.1.3
     container_name: velodb-doris-app-test-init
     entrypoint: ["/bin/bash", "-c"]
     environment:
@@ -64,6 +66,9 @@ services:
         anonymous_auth_enabled: "false"
     ports:
       - "${GRAFANA_PORT:-3003}:3000"
+      - "${DORIS_SSO_JWKS_PORT:-8999}:8999"
+    env_file:
+      - ${IDP_ENV_FILE:-./keycloak.env}
     environment:
       NODE_ENV: development
       # Docker Desktop can inject host proxy variables into containers. The
@@ -78,7 +83,7 @@ services:
       NO_PROXY: "*"
       no_proxy: "*"
       GF_LOG_LEVEL: info
-      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: velodb-doris-app
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: velodb-doris-app,velodb-doris-datasource
       GF_PLUGINS_PREINSTALL_DISABLED: "true"
       GF_PLUGINS_PREINSTALL_AUTO_UPDATE: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
@@ -86,11 +91,23 @@ services:
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_AUTH_BASIC_ENABLED: "true"
+      # Local test environment only. Production maps Grafana roles according
+      # to the deployment's standard OIDC authorization policy.
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "'Admin'"
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      VELODB_DORIS_SSO_SIGNING_KEY_FILE: /run/secrets/doris-sso-signing-key.pem
+      VELODB_DORIS_SSO_ISSUER: http://host.docker.internal:8999
+      VELODB_DORIS_SSO_JWKS_PUBLIC_URL: http://host.docker.internal:8999/.well-known/jwks.json
+      VELODB_DORIS_SSO_JWKS_LISTEN_ADDR: :8999
+      VELODB_DORIS_SSO_ALLOW_INSECURE_HTTP: "true"
+      # Grafana 12.4+ filters the host environment inherited by plugin processes.
+      # Forward these deployment-only Profile variables to this trusted datasource.
+      GF_PLUGINS_FORWARD_HOST_ENV_VARS: velodb-doris-datasource
     volumes:
       - ../dist:/var/lib/grafana/plugins/velodb-doris-app:ro
       - ./provisioning:/etc/grafana/provisioning:ro
+      - ./doris-sso-signing-key.pem:/run/secrets/doris-sso-signing-key.pem:ro
     depends_on:
       doris-init:
         condition: service_completed_successfully
@@ -104,6 +121,36 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  grafana-datasource-init:
+    image: alpine:3.20
+    container_name: velodb-grafana-datasource-init
+    entrypoint: []
+    environment:
+      # Docker Desktop's host gateway is also used by the datasource for the
+      # local OIDC backchannel and avoids startup races on the Compose network.
+      GRAFANA_URL: http://host.docker.internal:3003
+      GRAFANA_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./configure-datasource.sh:/test-env/configure-datasource.sh:ro
+    depends_on:
+      grafana:
+        condition: service_healthy
+    command: ["/bin/sh", "-ec", "apk add --no-cache curl jq >/dev/null && exec /bin/sh /test-env/configure-datasource.sh"]
+    restart: "no"
+
+  doris-sso-init:
+    image: apache/doris:all-in-one-4.1.3
+    container_name: velodb-doris-sso-init
+    entrypoint: ["/bin/sh", "-ec"]
+    command: ["exec /bin/sh /test-env/configure-doris-sso.sh"]
+    volumes:
+      - ./configure-doris-sso.sh:/test-env/configure-doris-sso.sh:ro
+    depends_on:
+      grafana-datasource-init:
+        condition: service_completed_successfully
+    restart: "no"
+
 volumes:
-  doris-fe-meta:
-  doris-be-storage:
+  doris-fe-meta-4-1-3:
+  doris-be-storage-4-1-3:

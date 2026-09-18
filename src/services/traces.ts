@@ -19,7 +19,7 @@ export function getTableDataTraceService(payload: any, options?: TraceServiceOpt
                 {
                     refId: 'getTableDataTrace',
                     datasource: {
-                        type: 'mysql',
+                        type: selectdbDS.type,
                         uid: selectdbDS.uid,
                     },
                     rawSql: traceSQL,
@@ -43,7 +43,7 @@ export function getTracesService(payload: any, options?: TraceServiceOptions) {
                 {
                     refId: 'getTraces',
                     datasource: {
-                        type: 'mysql',
+                        type: selectdbDS.type,
                         uid: selectdbDS.uid,
                     },
                     rawSql: getTracesSQL,
@@ -67,7 +67,7 @@ export function getServiceListService(payload: any, options?: TraceServiceOption
                 {
                     refId: 'getServiceList',
                     datasource: {
-                        type: 'mysql',
+                        type: selectdbDS.type,
                         uid: selectdbDS.uid,
                     },
                     rawSql: serviceListSQL,
@@ -91,7 +91,7 @@ export function getOperationListService(payload: any, options?: TraceServiceOpti
                 {
                     refId: 'getOperationList',
                     datasource: {
-                        type: 'mysql',
+                        type: selectdbDS.type,
                         uid: selectdbDS.uid,
                     },
                     rawSql: operationListSQL,
@@ -102,5 +102,4 @@ export function getOperationListService(payload: any, options?: TraceServiceOpti
         credentials: 'include',
     }), options);
 }
-
 

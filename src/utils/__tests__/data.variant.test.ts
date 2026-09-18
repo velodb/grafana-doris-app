@@ -11,6 +11,7 @@ import {
     convertColumnToRowViaFieldsType,
     escapeHtml,
     formatFieldDisplayValue,
+    isStructuredJsonType,
     isVariantType,
     parseJsonLikeValue,
 } from '../data';
@@ -20,6 +21,13 @@ describe('variant display helpers', () => {
         expect(isVariantType('VARIANT')).toBe(true);
         expect(isVariantType('variant')).toBe(true);
         expect(isVariantType('String')).toBe(false);
+    });
+
+    it('detects JSON-like structured field types without changing VARIANT detection', () => {
+        expect(isStructuredJsonType('VARIANT')).toBe(true);
+        expect(isStructuredJsonType('JSON')).toBe(true);
+        expect(isStructuredJsonType('JSONB')).toBe(true);
+        expect(isStructuredJsonType('STRING')).toBe(false);
     });
 
     it('parses JSON-like objects, arrays, and strings', () => {
@@ -83,5 +91,16 @@ describe('variant display helpers', () => {
 
         expect(rows[0].attrs).toEqual({ status: 500, nested: { ok: false } });
         expect(rows[1].attrs).toBe('not json');
+    });
+
+    it('parses JSON columns via Doris field metadata', () => {
+        const frame = {
+            schema: { fields: [{ name: 'log_attributes', type: 'string' }] },
+            data: { values: [['{"source":{"ip":"127.0.0.1"}}']] },
+        };
+
+        const [row] = convertColumnToRowViaFieldsType(frame, [{ Field: 'log_attributes', Type: 'JSON' }]);
+
+        expect(row.log_attributes).toEqual({ source: { ip: '127.0.0.1' } });
     });
 });

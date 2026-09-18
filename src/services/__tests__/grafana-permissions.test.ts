@@ -1,7 +1,7 @@
 import { DataSourceInstanceSettings, DataSourceJsonData } from '@grafana/data';
-import { filterDatasourcesByTeamPermissions } from '../grafana-permissions';
+import { DORIS_DATASOURCE_TYPE, MYSQL_DATASOURCE_TYPE, filterDatasourcesByTeamPermissions } from '../grafana-permissions';
 
-function datasource(uid: string, type = 'mysql'): DataSourceInstanceSettings<DataSourceJsonData> {
+function datasource(uid: string, type = DORIS_DATASOURCE_TYPE): DataSourceInstanceSettings<DataSourceJsonData> {
   return {
     uid,
     type,
@@ -13,13 +13,15 @@ describe('filterDatasourcesByTeamPermissions', () => {
   const datasources = [
     datasource('doris-a'),
     datasource('doris-b'),
+    datasource('mysql-a', MYSQL_DATASOURCE_TYPE),
     datasource('postgres-a', 'postgres'),
   ];
 
-  test('returns all mysql datasources when user has no teams', () => {
+  test('returns all supported Doris SSO and MySQL datasources when user has no teams', () => {
     expect(filterDatasourcesByTeamPermissions(datasources, [], [])).toEqual([
       datasource('doris-a'),
       datasource('doris-b'),
+      datasource('mysql-a', MYSQL_DATASOURCE_TYPE),
     ]);
   });
 
@@ -33,11 +35,11 @@ describe('filterDatasourcesByTeamPermissions', () => {
         ],
         [
           { teamId: 1, teamName: 'observability', datasourceUids: ['doris-a'] },
-          { teamId: 2, teamName: 'platform', datasourceUids: ['doris-b'] },
+          { teamId: 2, teamName: 'platform', datasourceUids: ['doris-b', 'mysql-a'] },
           { teamId: 3, teamName: 'other', datasourceUids: ['postgres-a'] },
         ],
       ),
-    ).toEqual([datasource('doris-a'), datasource('doris-b')]);
+    ).toEqual([datasource('doris-a'), datasource('doris-b'), datasource('mysql-a', MYSQL_DATASOURCE_TYPE)]);
   });
 
   test('returns no datasources when user teams have no permission rule', () => {
@@ -50,7 +52,7 @@ describe('filterDatasourcesByTeamPermissions', () => {
     ).toEqual([]);
   });
 
-  test('does not return non-mysql datasources even when explicitly allowed', () => {
+  test('does not return unsupported datasources even when explicitly allowed', () => {
     expect(
       filterDatasourcesByTeamPermissions(
         datasources,

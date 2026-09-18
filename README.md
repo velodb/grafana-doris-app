@@ -16,51 +16,54 @@ This plugin is frontend-only and does not include a Go backend.
 
 1. Install dependencies
 
-   ```bash
-   npm install
-   ```
+    ```bash
+    npm install
+    ```
 
 2. Build plugin in development mode and run in watch mode
 
-   ```bash
-   npm run dev
-   ```
+    ```bash
+    npm run dev
+    ```
 
 3. Build plugin in production mode
 
-   ```bash
-   npm run build
-   ```
+    ```bash
+    npm run build
+    ```
 
 4. Run the tests (using Jest)
 
-   ```bash
-   # Runs the tests and watches for changes, requires git init first
-   npm run test
+    ```bash
+    # Runs the tests and watches for changes, requires git init first
+    npm run test
 
-   # Exits after running all the tests
-   npm run test:ci
-   ```
+    # Exits after running all the tests
+    npm run test:ci
+    ```
 
 5. Spin up a Grafana instance and run the plugin inside it (using Docker)
 
-   ```bash
-   npm run server
-   ```
+    ```bash
+    npm run server
+    ```
 
 6. Run the linter
 
-   ```bash
-   npm run lint
+    ```bash
+    npm run lint
 
-   # or
+    # or
 
-   npm run lint:fix
-   ```
+    npm run lint:fix
+    ```
 
 ## User guides
 
-- [使用 Doris 数据源配置 Grafana Alert](./docs/grafana-alerting-configuration-zh.md)
+-   [使用 Doris 数据源配置 Grafana Alert](./docs/grafana-alerting-configuration-zh.md)
+-   [Doris SSO Datasource 使用指南](./docs/doris-sso-user-guide-zh.md)
+-   [OIDC 用户验收与测试说明](./docs/oidc-user-test-zh.md)
+-   [VARIANT 功能与测试说明](./docs/variant-feature-test-zh.md)
 
 # Distributing your plugin
 
@@ -78,7 +81,7 @@ Before signing a plugin for the first time please consult the Grafana [plugin si
 
 1. Create a [Grafana Cloud account](https://grafana.com/signup).
 2. Make sure that the first part of the plugin ID matches the slug of your Grafana Cloud account.
-   - _You can find the plugin ID in the `plugin.json` file inside your plugin directory. For example, if your account slug is `acmecorp`, you need to prefix the plugin ID with `acmecorp-`._
+    - _You can find the plugin ID in the `plugin.json` file inside your plugin directory. For example, if your account slug is `acmecorp`, you need to prefix the plugin ID with `acmecorp-`._
 3. Create a Grafana Cloud API key with the `PluginPublisher` role.
 4. Keep a record of this API key as it will be required for signing a plugin
 
@@ -105,6 +108,6 @@ To trigger the workflow we need to push a version tag to github. This can be ach
 
 Below you can find source code for existing app plugins and other related documentation.
 
-- [Basic app plugin example](https://github.com/grafana/grafana-plugin-examples/tree/master/examples/app-basic#readme)
-- [`plugin.json` documentation](https://grafana.com/developers/plugin-tools/reference/plugin-jsonplugin-json)
-- [Sign a plugin](https://grafana.com/developers/plugin-tools/publish-a-plugin/sign-a-plugin)
+-   [Basic app plugin example](https://github.com/grafana/grafana-plugin-examples/tree/master/examples/app-basic#readme)
+-   [`plugin.json` documentation](https://grafana.com/developers/plugin-tools/reference/plugin-jsonplugin-json)
+-   [Sign a plugin](https://grafana.com/developers/plugin-tools/publish-a-plugin/sign-a-plugin)

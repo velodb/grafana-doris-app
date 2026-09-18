@@ -33,6 +33,7 @@ import { currentTraceTableAtom } from 'store/traces';
 import { Subscription } from 'rxjs';
 import { toError } from 'utils/errors';
 import { useDatasourcePermissions } from 'hooks/useDatasourcePermissions';
+import { SUPPORTED_DATASOURCE_TYPES, isSupportedDatasourceType } from 'services/grafana-permissions';
 
 function getStoredValue<T>(key: string): T | undefined {
     if (typeof window === 'undefined') {
@@ -541,13 +542,13 @@ export default function TracesHeader() {
                     {/* filter 这个版本无效 */}
                     <DataSourcePicker
                         width={20}
-                        type={'mysql'}
+                        type={SUPPORTED_DATASOURCE_TYPES}
                         current={selectedDatasource}
                         placeholder="Choose"
                         noDefault
                         disabled={datasourcePermissionsLoading || allowedDatasources.length === 0}
                         isLoading={datasourcePermissionsLoading}
-                        filter={ds => ds.type === 'mysql' && allowedDatasourceUids.has(ds.uid)}
+                        filter={ds => isSupportedDatasourceType(ds.type) && allowedDatasourceUids.has(ds.uid)}
                         onChange={item => {
                             if (!allowedDatasourceUids.has(item.uid)) {
                                 return;

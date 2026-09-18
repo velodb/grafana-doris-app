@@ -18,7 +18,7 @@ export function getTableDataService(payload: any, options?: DiscoverServiceOptio
                 {
                     refId: 'getTableData',
                     datasource: {
-                        type: 'mysql',
+                        type: selectdbDS.type,
                         uid: selectdbDS.uid,
                     },
                     rawSql: QueryTableResultSQL,
@@ -42,7 +42,7 @@ export function getTableDataChartsService(payload: any, options?: DiscoverServic
                 {
                     refId: 'getTableDataCharts',
                     datasource: {
-                        type: 'mysql',
+                        type: selectdbDS.type,
                         uid: selectdbDS.uid,
                     },
                     rawSql: QueryTableChartsSQL,
@@ -66,7 +66,7 @@ export function getTopDataService(payload: any, options?: DiscoverServiceOptions
                 {
                     refId: 'getTableTopData',
                     datasource: {
-                        type: 'mysql',
+                        type: selectdbDS.type,
                         uid: selectdbDS.uid,
                     },
                     rawSql: QueryTableResultSQL,
@@ -90,7 +90,7 @@ export function getTableDataCountService(payload: any, options?: DiscoverService
                 {
                     refId: 'getTableCountData',
                     datasource: {
-                        type: 'mysql',
+                        type: selectdbDS.type,
                         uid: selectdbDS.uid,
                     },
                     rawSql: QueryTableResultCountSQL,
@@ -115,7 +115,7 @@ export function getSurroundingDataService(payload: any) {
                 {
                     refId: 'getSurroundingData',
                     datasource: {
-                        type: 'mysql',
+                        type: selectdbDS.type,
                         uid: selectdbDS.uid,
                     },
                     rawSql: surroundingSQL,

@@ -27,6 +27,8 @@ services:
       GF_LOG_FILTERS: plugin.velodb-doris-app:debug
       GF_LOG_LEVEL: debug
       GF_DATAPROXY_LOGGING: 1
-      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: velodb-doris-app
+      # The app package also ships the nested Doris SSO datasource plugin.
+      # Grafana validates each plugin ID independently.
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: velodb-doris-app,velodb-doris-datasource
       GF_AUTH_ANONYMOUS_ENABLED: false
       # GF_AUTH_ANONYMOUS_ORG_ROLE: Admin

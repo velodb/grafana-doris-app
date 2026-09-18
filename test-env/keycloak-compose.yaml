@@ -1,0 +1,29 @@
+name: grafana-doris-keycloak
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.3
+    container_name: velodb-keycloak
+    # Browser-visible issuer. Grafana reaches this through the explicit local
+    # Datasource backchannel setting documented in README.
+    command: start-dev --import-realm --hostname=http://localhost:${KEYCLOAK_PORT:-8085}
+    ports:
+      - "${KEYCLOAK_PORT:-8085}:8080"
+    env_file:
+      - ./keycloak.env
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    volumes:
+      - ./keycloak-realm.json:/opt/keycloak/data/import/velodb-realm.json:ro
+      - keycloak-data:/opt/keycloak/data
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  keycloak-data:

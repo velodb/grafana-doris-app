@@ -1,5 +1,10 @@
 CREATE DATABASE IF NOT EXISTS otel;
 
+CREATE ROLE IF NOT EXISTS doris_reader;
+CREATE ROLE IF NOT EXISTS doris_writer;
+GRANT SELECT_PRIV ON otel.* TO ROLE doris_reader;
+GRANT SELECT_PRIV, LOAD_PRIV ON otel.* TO ROLE doris_writer;
+
 DROP TABLE IF EXISTS otel.otel_logs;
 
 CREATE TABLE otel.otel_logs (
@@ -35,4 +40,3 @@ INSERT INTO otel.otel_logs VALUES
   (NOW(3) - INTERVAL 6 HOUR,    'worker',   'worker-1',   '00000000000000000000000000000010', '000000000000000a', 9,  'INFO',  'background job completed',     '{"k8s.pod.label.app":"worker","k8s.namespace.name":"jobs","k8s.pod.name":"worker-1"}', '{"job":"reconcile"}', 'demo.logger', '1.0.0'),
   (NOW(3) - INTERVAL 12 HOUR,   'checkout', 'checkout-1', '00000000000000000000000000000011', '000000000000000b', 9,  'INFO',  'older checkout request',       '{"app":"app1","k8s.pod.label.app":"checkout","k8s.namespace.name":"shop","k8s.pod.name":"checkout-1"}', '{"http.method":"GET"}', 'demo.logger', '1.0.0'),
   (NOW(3) - INTERVAL 2 DAY,     'archive',  'archive-1',  '00000000000000000000000000000012', '000000000000000c', 9,  'INFO',  'outside default time range',    '{"app":"old-app","k8s.pod.label.app":"archive","k8s.namespace.name":"archive","k8s.pod.name":"archive-1"}', '{}', 'demo.logger', '1.0.0');
-

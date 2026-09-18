@@ -2,7 +2,7 @@
 import { ColumnDef, ColumnOrderState, ColumnSizingState, OnChangeFn, Row, SortingState } from '@tanstack/react-table';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { Drawer, IconButton, Pagination, Tab, TabContent, TabsBar, useTheme2 } from '@grafana/ui';
+import { Drawer, IconButton, Pagination, Select, Switch, Tab, TabContent, TabsBar, useTheme2 } from '@grafana/ui';
 import {
     tableTotalCountAtom,
     tableDataAtom,
@@ -19,9 +19,9 @@ import {
     selectedDatasourceAtom,
     tableFieldsAtom,
     discoverRowsExpandedAtom,
+    discoverRowsWrappedAtom,
     discoverColumnLayoutsAtom,
 } from 'store/discover';
-import { get } from 'lodash-es';
 import { Button as AntButton, Tooltip } from 'antd';
 import SDCollapsibleTable from 'components/selectdb-ui/sd-collapsible-table';
 import { ColumnStyleWrapper, HoverStyle } from './discover-content.style';
@@ -32,9 +32,12 @@ import SurroundingLogs from 'components/surrounding-logs';
 import TraceDetail from 'components/trace-detail';
 import { usePluginContext } from '@grafana/data';
 import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
-import { formatFieldDisplayValue, formatTimestampToDateTime, isComplexType, isValidTimeFieldType, parseJsonLikeValue } from 'utils/data';
+import { formatFieldDisplayValue, formatTimestampToDateTime, isComplexType, isStructuredJsonType, isValidTimeFieldType, parseJsonLikeValue } from 'utils/data';
 import { DiscoverQueryState, DiscoverSort } from 'types/discover';
 import { reconcileColumnOrder, reconcileColumnSizing } from 'utils/column-layout';
+import { VariantValueViewer } from './variant-value-viewer';
+import { getVariantFieldValue } from 'utils/variant-fields';
+import { normalizeCount } from 'utils/count';
 
 const EXPAND_COLUMN_ID = '__expand';
 const TIME_COLUMN_ID = '__time';
@@ -55,7 +58,7 @@ type DiscoverContentProps = {
 export default function DiscoverContent({ fetchNextPage, getTraceData, queryState, sort, onSortChange }: DiscoverContentProps) {
     const theme = useTheme2();
     const [fields, setFields] = useState<any[]>([]);
-    const tableTotalCount = useAtomValue(tableTotalCountAtom);
+    const tableTotalCount = normalizeCount(useAtomValue(tableTotalCountAtom));
     const [tableData, _setTableData] = useAtom(tableDataAtom);
     const [selectedFields, setSelectedFields] = useAtom(selectedFieldsAtom);
     const hasSelectedFields = selectedFields.length > 0;
@@ -66,7 +69,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
     const setSurroundingDataFilter = useSetAtom(surroundingDataFilterAtom);
     const setBeforeCount = useSetAtom(beforeCountAtom);
     const setAfterCount = useSetAtom(afterCountAtom);
-    const [pageSize, _setPageSize] = useAtom(pageSizeAtom);
+    const [pageSize, setPageSize] = useAtom(pageSizeAtom);
     const [page, setPage] = useAtom(pageAtom);
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [surroundingLogsOpen, setSurroundingLogsOpen] = useState(false);
@@ -75,6 +78,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
     const currentDatasource = useAtomValue(selectedDatasourceAtom);
     const tableFields = useAtomValue(tableFieldsAtom);
     const [discoverRowsExpanded, setDiscoverRowsExpanded] = useAtom(discoverRowsExpandedAtom);
+    const [discoverRowsWrapped, setDiscoverRowsWrapped] = useAtom(discoverRowsWrappedAtom);
     const [columnLayouts, setColumnLayouts] = useAtom(discoverColumnLayoutsAtom);
     const availableColumnIds = useMemo(
         () => [
@@ -287,6 +291,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                 {subTableData.map((item: any) => {
                                     const fieldValue = formatFieldDisplayValue(item.value, 'compact');
                                     const fieldName = item.field;
+                                    const fieldType = tableFields.find((field: any) => field.Field === fieldName)?.Type;
                                     const tableRowStyle = css`
                                         &:hover {
                                             .filter-table-content {
@@ -331,7 +336,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                                         word-break: break-all;
                                                     `}
                                                 >
-                                                    {fieldValue}
+                                                    {isStructuredJsonType(fieldType) ? <VariantValueViewer value={item.value} /> : fieldValue}
                                                 </div>
                                             </td>
                                         </tr>
@@ -341,26 +346,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                         </table>
                     )}
                     {state[1].active && (
-                        <div>
-                            <pre
-                                className={css`
-                                    padding: 16px;
-                                    margin: 0;
-                                    overflow-x: auto;
-                                    white-space: pre-wrap;
-                                    word-break: break-all;
-                                    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-                                    font-size: 12px;
-                                    line-height: 1.5;
-                                    ${theme.isDark ? 'background-color: #1e1e1e; color: #d4d4d4;' : 'background-color: #f5f5f5; color: #333;'}
-                                    border-radius: 4px;
-                                    max-height: 400px;
-                                    overflow-y: auto;
-                                `}
-                            >
-                                {formatFieldDisplayValue(processedData, 'pretty')}
-                            </pre>
-                        </div>
+                        <VariantValueViewer value={processedData} rootName="JSON" />
                     )}
                 </TabContent>
                 <Tooltip title="Surrounding Items will ignore the existing interface's filter conditions and view the context through time.">
@@ -541,10 +527,13 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                     onClick={handleClick}
                                     dangerouslySetInnerHTML={{ __html: html }}
                                     className={css`
-                                        max-height: 12rem;
-                                        overflow: auto;
-                                        word-break: break-all;
-                                        white-space: pre-wrap;
+                                        display: block;
+                                        width: 100%;
+                                        max-height: ${discoverRowsWrapped ? '12rem' : '1.25rem'};
+                                        overflow: ${discoverRowsWrapped ? 'auto' : 'hidden'};
+                                        word-break: ${discoverRowsWrapped ? 'break-all' : 'normal'};
+                                        white-space: ${discoverRowsWrapped ? 'pre-wrap' : 'nowrap'};
+                                        text-overflow: ${discoverRowsWrapped ? 'clip' : 'ellipsis'};
                                     `}
                                 />
                             </ColumnStyleWrapper>
@@ -558,7 +547,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                 ...selectedFields.map((field: any) => {
                     return {
                         id: getFieldColumnId(field.Field),
-                        accessorFn: (row: any) => get(row._original, field.Field),
+                        accessorFn: (row: any) => getVariantFieldValue(row._original, field),
                         size: 240,
                         minSize: 80,
                         maxSize: 800,
@@ -588,9 +577,9 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                 />
                             </div>
                         ),
-                        cell: ({ row, getValue }: any) => {
-                            // let fieldValue = row.original._original[field.Field];
-                            const fieldValue = formatFieldDisplayValue(get(row.original._original, field.Field), 'compact');
+                        cell: ({ row }: any) => {
+                            const rawFieldValue = getVariantFieldValue(row.original._original, field);
+                            const fieldValue = formatFieldDisplayValue(rawFieldValue, 'compact');
                             const fieldName = field.Field;
                             const fieldType = field.Type;
                             return (
@@ -615,7 +604,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                                 word-break: break-all;
                                             `}
                                         >
-                                            {field.value === 'trace_id' ? <AntButton
+                                            {isStructuredJsonType(fieldType) ? <VariantValueViewer value={rawFieldValue} /> : field.value === 'trace_id' ? <AntButton
                                                 className={css`padding-left: 0px;`}
                                                 onClick={() => {
                                                     if (isTargetLogTable && targetTraceTable) {
@@ -632,9 +621,10 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                                         display: block;
                                                         width: 100%;
                                                         font-size: 12px;
-                                                        white-space: nowrap;
-                                                        text-overflow: ellipsis;
-                                                        overflow: hidden;
+                                                        white-space: ${discoverRowsWrapped ? 'pre-wrap' : 'nowrap'};
+                                                        text-overflow: ${discoverRowsWrapped ? 'clip' : 'ellipsis'};
+                                                        overflow: ${discoverRowsWrapped ? 'visible' : 'hidden'};
+                                                        overflow-wrap: anywhere;
                                                     `}
                                                 >
                                                     {fieldValue}
@@ -658,7 +648,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
         }
         return dynamicColumns;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentTimeField, handleRemove, hasSelectedFields, selectedFields, theme.isDark]);
+    }, [currentTimeField, discoverRowsWrapped, handleRemove, hasSelectedFields, selectedFields, theme.isDark]);
 
     const tableSorting = useMemo<SortingState>(() => {
         const selectedColumnId = sort.field === currentTimeField || !sort.field
@@ -691,8 +681,14 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
             : nextColumn.id.startsWith(FIELD_COLUMN_PREFIX)
                 ? nextColumn.id.slice(FIELD_COLUMN_PREFIX.length)
                 : currentTimeField;
-        onSortChange({ field, direction: nextColumn.desc ? 'DESC' : 'ASC' });
-    }, [currentTimeField, onSortChange, tableSorting]);
+        const selectedField = selectedFields.find((item: any) => item.Field === field);
+        onSortChange({
+            field,
+            direction: nextColumn.desc ? 'DESC' : 'ASC',
+            variantPath: selectedField?.variantPath,
+            variantType: selectedField?.Type,
+        });
+    }, [currentTimeField, onSortChange, selectedFields, tableSorting]);
 
     const emptyContent = queryState.status === 'error' ? (
         <div role="status" className={css`padding: 32px 16px; text-align: center;`}>
@@ -725,10 +721,31 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                 className={css`
                     display: flex;
                     justify-content: flex-end;
+                    align-items: center;
+                    gap: 12px;
                     min-height: 28px;
                     padding: 0 8px 4px;
                 `}
             >
+                <label
+                    htmlFor="discover-wrap-rows"
+                    className={css`
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        cursor: pointer;
+                        font-size: 12px;
+                        color: ${theme.colors.text.secondary};
+                    `}
+                >
+                    换行
+                    <Switch
+                        id="discover-wrap-rows"
+                        aria-label="长文本换行"
+                        value={discoverRowsWrapped}
+                        onChange={event => setDiscoverRowsWrapped(event.currentTarget.checked)}
+                    />
+                </label>
                 <IconButton
                     name="history"
                     tooltip="Reset column layout"
@@ -768,6 +785,30 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
             >
                 <div>Total {tableTotalCount} rows</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <label
+                        className={css`
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                        `}
+                    >
+                        Rows per page
+                        <Select
+                            aria-label="Rows per page"
+                            options={[20, 50, 100, 200].map(size => ({ label: String(size), value: size }))}
+                            value={pageSize}
+                            onChange={option => {
+                                const nextPageSize = Number(option.value);
+                                if (![20, 50, 100, 200].includes(nextPageSize)) {
+                                    return;
+                                }
+                                setPageSize(nextPageSize);
+                                setPage(1);
+                                setJumpPage('1');
+                            }}
+                            width={10}
+                        />
+                    </label>
                     <Pagination
                         currentPage={page}
                         numberOfPages={Math.ceil(tableTotalCount / pageSize) || 1}
