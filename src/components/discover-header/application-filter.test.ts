@@ -57,3 +57,17 @@ describe('application filter', () => {
         expect(result.filters).toEqual([existingFilter]);
     });
 });
+
+it('translates only generated application labels without changing stored filters', async () => {
+    const { pluginI18n } = await import('i18n');
+    const { getFilterDisplayLabel } = await import('./application-filter');
+    const filters = applyApplicationFilter([], 'checkout', 'app').filters;
+    await pluginI18n.changeLanguage('zh-CN');
+    try {
+        expect(getFilterDisplayLabel(filters[0])).toBe('应用：checkout');
+        expect(filters[0].label).toBe('Application: checkout');
+        expect(getFilterDisplayLabel({ ...filters[0], id: 'custom', label: 'Application: checkout' })).toBe('Application: checkout');
+    } finally {
+        await pluginI18n.changeLanguage('en-US');
+    }
+});

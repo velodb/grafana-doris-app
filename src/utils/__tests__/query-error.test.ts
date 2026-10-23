@@ -61,4 +61,25 @@ describe('Discover query error parsing', () => {
 
         expect(getQueryErrorMessage(error)).toBe('permission denied');
     });
+
+    it.each([
+        [{ response: { data: { error: 'Doris connection refused' } } }, 'Doris connection refused'],
+        [{ data: { error: { message: 'invalid datasource configuration' } } }, 'invalid datasource configuration'],
+        [{ message: 'OIDC ID token is required', statusText: 'Internal Server Error' }, 'OIDC ID token is required'],
+        ['Connection unavailable', 'Connection unavailable'],
+    ])('preserves actionable error messages from different response shapes', (error, expected) => {
+        expect(getQueryErrorMessage(error)).toBe(expected);
+    });
+
+    it.each([
+        ['An error occurred within the plugin', 'Grafana server/plugin logs'],
+        ['OIDC ID token is required; enable Forward OAuth Identity for this datasource', 'Sign in with OIDC'],
+        ['OIDC ID token validation failed: token is expired', 'Sign in again'],
+        ['Doris SSO Profile is not configured', 'SSO Profile and identity provider configuration'],
+    ])('provides actionable guidance for %s', (message, expected) => {
+        const parsed = createDiscoverQueryError(new Error(message), { source: 'results', searchType: 'SQL' });
+
+        expect(parsed.message).toBe(message);
+        expect(parsed.likelyCause).toContain(expected);
+    });
 });

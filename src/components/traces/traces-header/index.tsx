@@ -1,4 +1,5 @@
 'use client';
+import { t } from 'i18n';
 import React, { useEffect } from 'react';
 import dayjs from 'dayjs';
 import { DiscoverHeaderSearch } from './discover-header.style';
@@ -9,6 +10,7 @@ import { dateTime, rangeUtil, usePluginContext, toDataFrame } from '@grafana/dat
 import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
 import {
     indexesAtom,
+    tableMetadataAtom,
     discoverCurrentAtom,
     locationAtom,
     // currentClusterAtom,
@@ -21,18 +23,21 @@ import {
     datasourcesAtom,
     selectedDatasourceAtom,
     timeRangeAtom,
+    timeZoneAtom,
     databasesAtom,
     tablesAtom,
     disabledOptionsAtom,
 } from 'store/discover';
 import { isValidTimeFieldType } from 'utils/data';
 import { Select, Field, useTheme2, TimeRangeInput } from '@grafana/ui';
-import { FORMAT_DATE } from '../../../constants';
-import { getDatabases, getFieldsService, getIndexesService, getTablesService } from 'services/metaservice';
+import { formatShareTime, parseTimeInZone, getGrafanaUserTimeZone as getDisplayTimeZone, normalizeTimeZone } from 'utils/time';
+import { getFieldsService, getIndexesService } from 'services/metaservice';
 import { currentTraceTableAtom } from 'store/traces';
-import { Subscription } from 'rxjs';
+import { useDatabaseTableSelection } from 'hooks/useDatabaseTableSelection';
 import { toError } from 'utils/errors';
 import { useDatasourcePermissions } from 'hooks/useDatasourcePermissions';
+import { SUPPORTED_DATASOURCE_TYPES, isSupportedDatasourceType } from 'services/grafana-permissions';
+import { timeRangeFieldClass } from 'components/time-range-input/time-range-input.styles';
 
 function getStoredValue<T>(key: string): T | undefined {
     if (typeof window === 'undefined') {
@@ -87,8 +92,8 @@ function parseUrlDate(value?: string | null) {
         return undefined;
     }
 
-    const parsedDate = dayjs(value);
-    return parsedDate.isValid() ? parsedDate : undefined;
+    const parsedDate = parseTimeInZone(value, 'browser');
+    return parsedDate?.isValid() ? parsedDate : undefined;
 }
 
 function buildAbsoluteTimeRange(start: dayjs.Dayjs, end: dayjs.Dayjs) {
@@ -102,8 +107,8 @@ function buildAbsoluteTimeRange(start: dayjs.Dayjs, end: dayjs.Dayjs) {
     };
 }
 
-function buildRelativeTimeRange(rawFrom: string, rawTo: string) {
-    const relativeRange = rangeUtil.convertRawToRange({ from: rawFrom, to: rawTo });
+function buildRelativeTimeRange(rawFrom: string, rawTo: string, zone = getDisplayTimeZone()) {
+    const relativeRange = rangeUtil.convertRawToRange({ from: rawFrom, to: rawTo }, zone);
 
     return {
         from: relativeRange.from,
@@ -134,6 +139,11 @@ function isRelativeRawRange(raw?: { from?: unknown; to?: unknown }) {
 export default function TracesHeader() {
     // const catalogs = useAtomValue(catalogAtom);
     const setIndexes = useSetAtom(indexesAtom);
+    const setTableMetadata = useSetAtom(tableMetadataAtom);
+    const requestedFieldsKey = React.useRef('');
+    const requestedIndexesKey = React.useRef('');
+    const metadataGeneration = React.useRef(0);
+    useEffect(() => () => { metadataGeneration.current += 1; }, []);
     const [discoverCurrent, setDiscoverCurrent] = useAtom(discoverCurrentAtom);
     if (process.env.NODE_ENV !== 'production') {
         discoverCurrentAtom.debugLabel = 'current';
@@ -156,7 +166,8 @@ export default function TracesHeader() {
     const selectdbDS = useAtomValue(selectedDatasourceAtom);
     const context = usePluginContext();
     const jsonData = context.meta.jsonData || {};
-    const logsConfig = mergeLogsConfig((jsonData as AppPluginSettings).logsConfig);
+    const configuredLogsConfig = (jsonData as AppPluginSettings).logsConfig;
+    const logsConfig = mergeLogsConfig(configuredLogsConfig);
     const {
         allowedDatasources,
         allowedDatasourceUids,
@@ -194,25 +205,6 @@ export default function TracesHeader() {
         [setLoc],
     );
 
-    const fetchDatabases = React.useCallback((ds: any) => {
-        if (!ds) {
-            return undefined;
-        }
-
-        return getDatabases(ds).subscribe({
-            next: (resp: any) => {
-                const { data, ok } = resp;
-                if (ok) {
-                    const frame = toDataFrame(data.results.getDatabases.frames[0]);
-                    const values = Array.from(frame.fields[0].values);
-                    const options = values.map((item: string) => ({ label: item, value: item }));
-                    setDatabases(options);
-                }
-            },
-            error: (err: any) => logError(toError(err), { source: 'TracesHeader', action: 'fetchDatabases' }),
-        });
-    }, [setDatabases]);
-
     useEffect(() => {
         setDataSource(allowedDatasources);
     }, [allowedDatasources, setDataSource]);
@@ -226,16 +218,7 @@ export default function TracesHeader() {
     }, [currentIndex, setDisabledOptions]);
 
     const theme = useTheme2();
-
-    useEffect(() => {
-        if (!selectdbDS) {
-            return;
-        }
-
-        const subscription: Subscription | undefined = fetchDatabases(selectdbDS);
-
-        return () => subscription?.unsubscribe();
-    }, [selectdbDS, fetchDatabases]);
+    const [timeZone, setTimeZone] = useAtom(timeZoneAtom);
 
     function getFields(
         selectedTable: any,
@@ -247,12 +230,18 @@ export default function TracesHeader() {
             return;
         }
 
+        const generation = metadataGeneration.current;
+        const metadataKey = JSON.stringify([effectiveDatasource.uid, effectiveDatabase, selectedTable.value]);
+        requestedFieldsKey.current = metadataKey;
         getFieldsService({
             selectdbDS: effectiveDatasource,
             database: effectiveDatabase,
             table: selectedTable.value,
         }).subscribe({
             next: ({ data, ok }: any) => {
+                if (requestedFieldsKey.current !== metadataKey || metadataGeneration.current !== generation) {
+                    return;
+                }
                 if (ok) {
                     const frame = toDataFrame(data.results.getFields.frames[0]);
                     const values = Array.from(frame.fields[0].values);
@@ -267,6 +256,7 @@ export default function TracesHeader() {
                         };
                     });
 
+                    setTableMetadata(previous => ({ ...previous, [metadataKey]: { ...previous[metadataKey], fields: tableFields } }));
                     setTableFields(tableFields);
 
                     if (values) {
@@ -287,7 +277,7 @@ export default function TracesHeader() {
                             ...prev,
                             database: effectiveDatabase,
                             table: selectedTable.value,
-                            timeField: targetTimeField || prev.timeField,
+                            timeField: targetTimeField,
                         }));
                         setTimeFields(options);
                     }
@@ -306,12 +296,18 @@ export default function TracesHeader() {
             return;
         }
 
+        const generation = metadataGeneration.current;
+        const metadataKey = JSON.stringify([effectiveDatasource.uid, effectiveDatabase, selectedTable.value]);
+        requestedIndexesKey.current = metadataKey;
         getIndexesService({
             selectdbDS: effectiveDatasource,
             database: effectiveDatabase,
             table: selectedTable.value,
         }).subscribe({
             next: ({ data, ok }: any) => {
+                if (requestedIndexesKey.current !== metadataKey || metadataGeneration.current !== generation) {
+                    return;
+                }
                 if (ok) {
                     const frame = toDataFrame(data.results.getIndexes.frames[0]);
                     const values = Array.from(frame.fields[2]?.values || []);
@@ -319,6 +315,7 @@ export default function TracesHeader() {
                     const indexesTypes = Array.from(frame.fields[10]?.values || []);
 
                     if (!values || values.length === 0) {
+                        setTableMetadata(previous => ({ ...previous, [metadataKey]: { ...previous[metadataKey], indexes: [] } }));
                         setIndexes([]);
                         setCurrentIndex([]);
                         return;
@@ -333,6 +330,7 @@ export default function TracesHeader() {
                         };
                     });
 
+                    setTableMetadata(previous => ({ ...previous, [metadataKey]: { ...previous[metadataKey], indexes: tableIndexes } }));
                     setIndexes(tableIndexes);
 
                     if (tableIndexes) {
@@ -346,6 +344,29 @@ export default function TracesHeader() {
         });
     }
 
+    const applyTableSelection = (datasource: any, database: string, table: string, timeField?: string) => {
+        metadataGeneration.current += 1;
+        requestedFieldsKey.current = '';
+        requestedIndexesKey.current = '';
+        setTableFields([]);
+        setTimeFields([]);
+        setIndexes([]);
+        setCurrentIndex([]);
+        setCurrentTable(table);
+        setDiscoverCurrent(prev => ({ ...prev, database, table, timeField: '' }));
+        if (table) {
+            getFields({ value: table }, { datasource, database, preferredTimeField: timeField ?? '' });
+            getIndexes({ value: table }, { datasource, database });
+        }
+    };
+
+    const { selectDatasource, selectDatabase, databasesLoading, tablesLoading } = useDatabaseTableSelection({
+        setDatabases,
+        setTables,
+        onDatabaseChange: database => setDiscoverCurrent(prev => ({ ...prev, database, table: '', timeField: '' })),
+        onTableChange: applyTableSelection,
+    });
+
     async function initHeaderData() {
         const urlSearchParams =
             loc?.searchParams instanceof URLSearchParams
@@ -358,6 +379,10 @@ export default function TracesHeader() {
         const urlDatabase = urlSearchParams.get('database')?.trim() || '';
         const urlTable = urlSearchParams.get('table')?.trim() || '';
         const urlTimeField = urlSearchParams.get('timeField')?.trim() || '';
+        const urlTimeZone = normalizeTimeZone(urlSearchParams.get('timeZone')) || timeZone;
+        if (urlTimeZone !== timeZone) {
+            setTimeZone(urlTimeZone);
+        }
         const urlStartTime = parseUrlDate(urlSearchParams.get('startTime'));
         const urlEndTime = parseUrlDate(urlSearchParams.get('endTime'));
         const urlTimeRawFrom = urlSearchParams.get('timeRawFrom')?.trim() || '';
@@ -374,11 +399,11 @@ export default function TracesHeader() {
             requestedDatasourceUid && allowedDatasourceUids.has(requestedDatasourceUid)
                 ? requestedDatasourceUid
                 : allowedDatasources[0]?.uid || '';
-        const defaultDatabase = persistedDatabase || logsConfig.database || '';
+        const defaultDatabase = persistedDatabase || configuredLogsConfig?.database || '';
         const defaultTraceTable = persistedTable || logsConfig.targetTraceTable || logsConfig.logsTable || '';
 
         if (urlTimeRawFrom && urlTimeRawTo) {
-            const relativeTimeRange = buildRelativeTimeRange(urlTimeRawFrom, urlTimeRawTo);
+            const relativeTimeRange = buildRelativeTimeRange(urlTimeRawFrom, urlTimeRawTo, urlTimeZone);
             setCurrentDate([dayjs(relativeTimeRange.from.toDate()), dayjs(relativeTimeRange.to.toDate())]);
             setTimeRange((prev: any) => ({
                 ...prev,
@@ -407,63 +432,20 @@ export default function TracesHeader() {
             return;
         }
 
-        if (!defaultDatasourceUid || !defaultDatabase) {
+        if (!defaultDatasourceUid) {
             hasInitializedUrlSyncRef.current = true;
             return;
         }
 
         try {
-            const ds =
-                selectedDatasource?.uid === defaultDatasourceUid
-                    ? selectedDatasource
-                    : allowedDatasources.find(datasource => datasource.uid === defaultDatasourceUid) ??
-                        await getDataSourceSrv().get({ uid: defaultDatasourceUid });
+            const ds = allowedDatasources.find(datasource => datasource.uid === defaultDatasourceUid) ??
+                await getDataSourceSrv().get({ uid: defaultDatasourceUid });
 
             if (!ds) {
                 return;
             }
-            if (selectedDatasource?.uid !== defaultDatasourceUid) {
-                setSelectedDatasource(ds as any);
-            }
-            fetchDatabases(ds);
-
-            getTablesService({
-                selectdbDS: ds,
-                database: defaultDatabase,
-            }).subscribe({
-                next: (resp: any) => {
-                    const { data, ok } = resp;
-                    if (ok) {
-                        const frame = toDataFrame(data.results.getTables.frames[0]);
-                        const values = Array.from(frame.fields[0].values);
-                        const options = values.map((item: string) => ({ label: item, value: item }));
-                        const targetTable =
-                            options.find(option => option.value === defaultTraceTable)?.value || options[0]?.value || '';
-
-                        setTables(options);
-                        setCurrentTable(targetTable);
-                        setDiscoverCurrent(prev => ({
-                            ...prev,
-                            database: defaultDatabase,
-                            table: targetTable,
-                        }));
-
-                        if (targetTable) {
-                            getFields(
-                                { value: targetTable },
-                                {
-                                    datasource: ds,
-                                    database: defaultDatabase,
-                                    preferredTimeField: persistedTimeField,
-                                },
-                            );
-                            getIndexes({ value: targetTable }, { datasource: ds, database: defaultDatabase });
-                        }
-                    }
-                },
-                error: (err: any) => logError(toError(err), { source: 'TracesHeader', action: 'getTables' }),
-            });
-
+            setSelectedDatasource(ds as any);
+            selectDatasource(ds, { database: defaultDatabase, table: defaultTraceTable, timeField: persistedTimeField });
         } catch (error) {
             logError(toError(error), { source: 'TracesHeader', action: 'initHeaderData' });
         } finally {
@@ -494,8 +476,8 @@ export default function TracesHeader() {
         const rawFrom = normalizeRawTimeValue(timeRange?.raw?.from);
         const rawTo = normalizeRawTimeValue(timeRange?.raw?.to);
         const shouldShareRelativeRaw = isRelativeRawRange(timeRange?.raw);
-        const currentStartTime = _currentDate[0]?.format(FORMAT_DATE);
-        const currentEndTime = _currentDate[1]?.format(FORMAT_DATE);
+        const currentStartTime = _currentDate[0] ? formatShareTime(_currentDate[0]) : undefined;
+        const currentEndTime = _currentDate[1] ? formatShareTime(_currentDate[1]) : undefined;
 
         const hasRelativeTimeParams = Boolean(urlTimeRawFrom && urlTimeRawTo);
         const hasAbsoluteTimeParams = Boolean(urlStartTime && urlEndTime);
@@ -503,8 +485,8 @@ export default function TracesHeader() {
         const isAbsoluteTimeSynced =
             hasAbsoluteTimeParams &&
             !shouldShareRelativeRaw &&
-            currentStartTime === urlStartTime?.format(FORMAT_DATE) &&
-            currentEndTime === urlEndTime?.format(FORMAT_DATE);
+            currentStartTime === (urlStartTime ? formatShareTime(urlStartTime) : undefined) &&
+            currentEndTime === (urlEndTime ? formatShareTime(urlEndTime) : undefined);
 
         if ((hasRelativeTimeParams || hasAbsoluteTimeParams) && !isRelativeTimeSynced && !isAbsoluteTimeSynced) {
             return;
@@ -515,12 +497,13 @@ export default function TracesHeader() {
             database: discoverCurrent.database,
             table: currentTable || discoverCurrent.table,
             timeField: currentTimeField,
+            timeZone,
             startTime: shouldShareRelativeRaw ? undefined : currentStartTime,
             endTime: shouldShareRelativeRaw ? undefined : currentEndTime,
             timeRawFrom: shouldShareRelativeRaw ? rawFrom : undefined,
             timeRawTo: shouldShareRelativeRaw ? rawTo : undefined,
         });
-    }, [currentTable, currentTimeField, _currentDate, discoverCurrent.database, discoverCurrent.table, locSearch, selectedDatasource, timeRange?.raw, updateShareParams]);
+    }, [currentTable, currentTimeField, _currentDate, discoverCurrent.database, discoverCurrent.table, locSearch, selectedDatasource, timeRange?.raw, updateShareParams, timeZone]);
 
     return (
         <div
@@ -535,86 +518,58 @@ export default function TracesHeader() {
         >
             <DiscoverHeaderSearch>
                 <Field
-                    label="Datasource"
-                    description={datasourcePermissionsError ? 'Failed to load team datasource permissions' : undefined}
+                    label={t('Datasource')}
+                    description={datasourcePermissionsError ? t('Failed to load team datasource permissions') : undefined}
                 >
                     {/* filter 这个版本无效 */}
                     <DataSourcePicker
                         width={20}
-                        type={'mysql'}
+                        type={SUPPORTED_DATASOURCE_TYPES}
                         current={selectedDatasource}
-                        placeholder="Choose"
+                        placeholder={t('Choose')}
                         noDefault
                         disabled={datasourcePermissionsLoading || allowedDatasources.length === 0}
                         isLoading={datasourcePermissionsLoading}
-                        filter={ds => ds.type === 'mysql' && allowedDatasourceUids.has(ds.uid)}
+                        filter={ds => isSupportedDatasourceType(ds.type) && allowedDatasourceUids.has(ds.uid)}
                         onChange={item => {
                             if (!allowedDatasourceUids.has(item.uid)) {
                                 return;
                             }
                             setSelectedDatasource(item);
-                            updateShareParams({
-                                datasource: item?.uid || item?.name || '',
-                            });
+                            selectDatasource(item);
                         }}
                     />
                 </Field>
                 {/* 需要从数据源中获取库表信息 */}
-                <Field label="Database" style={{ marginLeft: 8 }}>
-                    <Select
+                <Field label={t('Database')} style={{ marginLeft: 8 }}>
+                    <Select placeholder={t('Choose')}
                         width={15}
                         options={databases}
                         value={discoverCurrent.database}
+                        disabled={databasesLoading || !selectedDatasource || databases.length === 0}
+                        isLoading={databasesLoading}
                         onChange={(selectedDatabase: any) => {
-                            setDiscoverCurrent({
-                                ...discoverCurrent,
-                                database: selectedDatabase.value,
-                            });
-                            updateShareParams({
-                                database: selectedDatabase.value,
-                            });
-                            getTablesService({
-                                selectdbDS,
-                                database: selectedDatabase.value,
-                            }).subscribe({
-                                next: (resp: any) => {
-                                    const { data, ok } = resp;
-                                    if (ok) {
-                                        const frame = toDataFrame(data.results.getTables.frames[0]);
-                                        const values = Array.from(frame.fields[0].values);
-                                        const options = values.map((item: string) => ({ label: item, value: item }));
-                                        setTables(options);
-                                    }
-                                },
-                                error: (err: any) => logError(toError(err), { source: 'TracesHeader', action: 'getTables' }),
-                            });
+                            selectDatabase(selectdbDS, selectedDatabase.value);
                         }}
                     ></Select>
                 </Field>
 
-                <Field label="Table" style={{ marginLeft: 8 }}>
-                    <Select
+                <Field label={t('Table')} style={{ marginLeft: 8 }}>
+                    <Select placeholder={t('Choose')}
                         options={tables}
                         width={15}
                         value={currentTable}
+                        disabled={databasesLoading || tablesLoading || !discoverCurrent.database || tables.length === 0}
+                        isLoading={tablesLoading}
                         onChange={(selectedTable: any) => {
-                            setDiscoverCurrent({
-                                ...discoverCurrent,
-                                table: selectedTable.value,
-                            });
-                            setCurrentTable(selectedTable.value);
-                            updateShareParams({
-                                table: selectedTable.value,
-                            });
-                            getFields(selectedTable);
-                            getIndexes(selectedTable);
+                            applyTableSelection(selectdbDS, discoverCurrent.database, selectedTable.value);
                         }}
                     />
                 </Field>
             </DiscoverHeaderSearch>
             {!searchFocus && (
                 <>
-                    <Field label="Time Field">
+                    <Field label={t('Time Field')}>
                         <Select
                             value={currentTimeField}
                             options={timeFields}
@@ -627,11 +582,14 @@ export default function TracesHeader() {
                                     timeField: selectdbTimeFiled.value,
                                 });
                             }}
-                            placeholder={'Time Field'}
+                            placeholder={t('Time Field')}
                         />
                     </Field>
-                    <Field label="Time Range" style={{ marginLeft: 8, marginRight: 8 }}>
+                    <Field label={t('Time Range')} className={timeRangeFieldClass} style={{ marginLeft: 8, marginRight: 8 }}>
                         <TimeRangeInput
+                            hideTimeZone={false}
+                            timeZone={timeZone}
+                            onChangeTimeZone={zone => { setTimeZone(zone); updateShareParams({ timeZone: zone }); }}
                             isReversed={false}
                             onChange={timeRange => {
                                 const start = dayjs(timeRange.from.toDate());
@@ -646,8 +604,8 @@ export default function TracesHeader() {
                                     raw: hasRelativeRaw && rawFrom && rawTo ? { from: rawFrom, to: rawTo } : { from: dateTime(timeRange.from.toDate()), to: dateTime(timeRange.to.toDate()) },
                                 });
                                 updateShareParams({
-                                    startTime: hasRelativeRaw ? undefined : start.format(FORMAT_DATE),
-                                    endTime: hasRelativeRaw ? undefined : end.format(FORMAT_DATE),
+                                    startTime: hasRelativeRaw ? undefined : formatShareTime(start),
+                                    endTime: hasRelativeRaw ? undefined : formatShareTime(end),
                                     timeRawFrom: hasRelativeRaw ? rawFrom : undefined,
                                     timeRawTo: hasRelativeRaw ? rawTo : undefined,
                                 });

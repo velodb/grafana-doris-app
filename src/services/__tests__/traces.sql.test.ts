@@ -1,112 +1,92 @@
-import { buildTraceAggSQLFromParams, getQueryTableTraceSQL } from 'services/traces.sql';
+import {
+    buildTraceAggSQLFromParams,
+    buildTraceCountSQLFromParams,
+    buildTraceSummaryListSQL,
+    buildTraceSummaryCountSQL,
+    buildTraceSupplementSQL,
+    getQueryTableTraceSQL,
+} from '../traces.sql';
 
-describe('buildTraceAggSQLFromParams', () => {
-    const baseParams = {
-        database: 'otel',
-        table: 'traces',
-        timeField: 'timestamp',
-        startDate: '2026-03-18 00:00:00',
-        endDate: '2026-03-19 00:00:00',
-        page: 1,
-        page_size: 20,
-        sortBy: 'most-recent',
-    };
+const params = { database: 'otel', table: 'traces', timeField: 'timestamp', startDate: '2026-03-18 23:00:00', endDate: '2026-03-19 01:00:00', page: 2, page_size: 20 };
 
-    it('filters min duration with the same millisecond trace duration expression used by the list', () => {
-        const sql = buildTraceAggSQLFromParams({
-            ...baseParams,
-            minDuration: '100ms',
-        });
-
-        expect(sql).toContain('MAX(UNIX_TIMESTAMP(t.timestamp) * 1000 + t.duration / 1000)');
-        expect(sql).toContain('- MIN(UNIX_TIMESTAMP(t.timestamp) * 1000) AS trace_duration_ms');
-        expect(sql).toContain('AND d.trace_duration_ms >= 100');
-    });
-
-    it('treats bare numeric duration input as milliseconds', () => {
-        const sql = buildTraceAggSQLFromParams({
-            ...baseParams,
-            minDuration: '250',
-        });
-
-        expect(sql).toContain('AND d.trace_duration_ms >= 250');
-    });
-
-    it('pages deterministic root spans before aggregating the selected traces', () => {
-        const sql = buildTraceAggSQLFromParams({
-            ...baseParams,
-            page: 2,
-        });
-
-        expect(sql).toContain('ROW_NUMBER() OVER (\n        PARTITION BY trace_id\n        ORDER BY timestamp ASC, span_id ASC');
-        expect(sql).toContain('SELECT r.*, COUNT(*) OVER() AS total_count\n    FROM eligible_roots r');
-        expect(sql).toContain('ORDER BY root_time DESC, trace_id DESC\n    LIMIT 20 OFFSET 20');
-        expect(sql).toContain('JOIN page_root_spans p ON t.trace_id = p.trace_id');
-        expect(sql).toContain("t.timestamp >= '2026-03-18 00:00:00' - INTERVAL 2 DAY");
-        expect(sql).toContain("t.timestamp < '2026-03-19 00:00:00' + INTERVAL 2 DAY");
-        expect(sql).toContain('UNIX_TIMESTAMP(p.root_time) AS time');
-        expect(sql).toContain('p.root_duration / 1000 AS root_span_duration_ms');
-        expect(sql).toContain("SUM(IF(t.status_code IN ('STATUS_CODE_ERROR', 'ERROR'), 1, 0)) AS error_spans");
-        expect(sql).toContain('ORDER BY p.root_time DESC, t.trace_id DESC');
-
-        expect(sql.indexOf('COUNT(*) OVER() AS total_count')).toBeLessThan(sql.indexOf('LIMIT 20 OFFSET 20'));
-        expect(sql.indexOf('LIMIT 20 OFFSET 20')).toBeLessThan(sql.indexOf('JOIN page_root_spans p ON t.trace_id = p.trace_id'));
-    });
-
-    it('applies root and span filters before counting and paging', () => {
-        const sql = buildTraceAggSQLFromParams({
-            ...baseParams,
-            service_name: 'frontend',
-            operation: 'GET /orders',
-            statusCode: 'STATUS_CODE_ERROR',
-            tags: 'http.method=GET',
-            minDuration: '100ms',
-            maxDuration: '2s',
-        });
-
-        expect(sql).toContain("root_service = 'frontend'");
-        expect(sql).toContain("operation = 'GET /orders'");
-        expect(sql).toContain('status_trace_ids AS (');
-        expect(sql).toContain("t.status_code = 'STATUS_CODE_ERROR'");
-        expect(sql).toContain('tag_trace_ids AS (');
-        expect(sql).toContain("t.span_attributes['http.method'] = 'GET'");
-        expect(sql).toContain('JOIN status_trace_ids s ON r.trace_id = s.trace_id');
-        expect(sql).toContain('JOIN tag_trace_ids g ON r.trace_id = g.trace_id');
-        expect(sql).toContain('JOIN trace_durations d ON r.trace_id = d.trace_id');
-        expect(sql).toContain('d.trace_duration_ms BETWEEN 100 AND 2000');
-    });
-
+describe('Trace SQL semantics', () => {
     it.each([
+        ['most-recent', 'time DESC'],
         ['longest-duration', 'trace_duration_ms DESC'],
         ['shortest-duration', 'trace_duration_ms ASC'],
         ['most-spans', 'spans DESC'],
         ['least-spans', 'spans ASC'],
-    ])('keeps full-window aggregation for %s sorting', (sortBy, orderBy) => {
-        const sql = buildTraceAggSQLFromParams({
-            ...baseParams,
-            sortBy,
-        });
+    ])('selects matching spans before roots, counting and paging for %s', (sortBy, order) => {
+        const sql = buildTraceAggSQLFromParams({ ...params, sortBy, service_name: 'checkout', operation: 'POST /checkout', tags: 'http.method=GET' });
+        const candidates = sql.slice(0, sql.indexOf('root_candidates AS'));
+        const roots = sql.slice(sql.indexOf('root_candidates AS'), sql.indexOf('trace_metrics AS'));
+        expect(candidates).toContain("service_name = 'checkout' AND span_name = 'POST /checkout'");
+        expect(candidates).toContain("span_attributes['http']['method'] = 'GET'");
+        expect(roots).not.toContain("service_name = 'checkout'");
+        expect(roots).toContain('PARTITION BY trace_id ORDER BY `timestamp` ASC, span_id ASC');
+        expect(roots).toContain('WHERE root_rank = 1');
+        expect(sql).toContain(`ORDER BY ${order}, trace_id DESC LIMIT 20 OFFSET 20`);
+        expect(sql).not.toContain('COUNT(*) OVER()');
+    });
 
-        expect(sql).toContain('all_trace_ids AS (');
-        expect(sql).toContain('aggregated AS (');
-        expect(sql).toContain(`ROW_NUMBER() OVER(ORDER BY ${orderBy}) AS rn`);
-        expect(sql).not.toContain('page_root_spans AS (');
+    it('uses aggregate millisecond duration for filtering and keeps cross-day spans', () => {
+        const sql = buildTraceAggSQLFromParams({ ...params, minDuration: '250', maxDuration: '2s' });
+        expect(sql).toContain("MAX(milliseconds_diff(t.`timestamp`, '1970-01-01 00:00:00') + t.duration / 1000)");
+        expect(sql).toContain('WHERE trace_duration_ms >= 250 AND trace_duration_ms <= 2000');
+        expect(sql).toContain('- INTERVAL 2 DAY');
+        expect(sql).toContain('+ INTERVAL 2 DAY');
+        expect(sql).toContain('r.root_duration / 1000 AS root_span_duration_ms');
+    });
+
+    it('counts the complete eligible set independently of page rows', () => {
+        const sql = buildTraceCountSQLFromParams({ ...params, minDuration: '100ms' });
+        expect(sql).toContain('SELECT COUNT(*) AS total FROM eligible_traces');
+        expect(sql).not.toContain('LIMIT 20');
+    });
+
+    it('quotes service, operation, identifiers and detail trace IDs', () => {
+        const sql = buildTraceAggSQLFromParams({ ...params, service_name: "O'Reilly" });
+        expect(sql).toContain("service_name = 'O\\'Reilly'");
+        expect(getQueryTableTraceSQL({ database: 'otel', table: 'traces', trace_id: "a'b" })).toContain("WHERE trace_id = 'a\\'b'");
     });
 });
 
-describe('getQueryTableTraceSQL', () => {
-    it('selects Doris span events as Grafana trace logs', () => {
-        const sql = getQueryTableTraceSQL({
-            database: 'otel',
-            table: 'traces',
-            trace_id: 'abc123',
-        });
+describe('Summary MV SQL', () => {
+    it('preserves MV aggregates then merges daily rows before filtering and pagination', () => {
+        const sql = buildTraceSummaryListSQL({ ...params, service_name: 'frontend', minDuration: '1ms' });
+        expect(sql).toContain("GROUP BY trace_id, date_trunc(`timestamp`, 'day')");
+        expect(sql).toContain("SUM(CASE WHEN status_code = 'STATUS_CODE_ERROR' THEN 1 ELSE 0 END)");
+        expect(sql).toContain('SUM(span_count) AS span_count');
+        expect(sql).toContain('MIN(first_root) AS first_root');
+        expect(sql).toContain('GROUP BY trace_id\nHAVING MIN(start_time)');
+        expect(sql).toContain('milliseconds_diff(MAX(end_time), MIN(start_time)) >= 1');
+        expect(sql.indexOf('GROUP BY trace_id\nHAVING')).toBeLessThan(sql.indexOf('ORDER BY'));
+        expect(sql).not.toContain('COUNT(*) OVER()');
+        expect(sql).not.toContain('FROM `otel`.`traces_summary`');
+    });
 
+    it('keeps an aggregate alongside COUNT and omits list ordering/pagination', () => {
+        const sql = buildTraceSummaryCountSQL(params);
+        expect(sql).toContain('COUNT(*) AS total, SUM(span_count)');
+        expect(sql).not.toContain('ORDER BY');
+        expect(sql).not.toContain('LIMIT');
+    });
+
+    it('supplements only the page and selects a deterministic root', () => {
+        const sql = buildTraceSupplementSQL(params, ['trace1', "trace'2"]);
+        expect(sql).toContain("trace_id IN ('trace1', 'trace\\'2')");
+        expect(sql).toContain('PARTITION BY trace_id ORDER BY `timestamp` ASC, span_id ASC');
+        expect(sql).toContain('r.root_rank = 1');
+    });
+});
+
+describe('Trace detail', () => {
+    it('returns plain attribute JSON and preserves event support', () => {
+        const sql = getQueryTableTraceSQL({ database: 'otel', table: 'traces', trace_id: 'abc123' });
+        expect(sql).toContain('CAST(resource_attributes AS TEXT) AS serviceTags');
+        expect(sql).toContain('CAST(span_attributes AS TEXT) AS tags');
+        expect(sql).not.toContain('MAP<STRING');
         expect(sql).toContain('CAST(ARRAY_MAP(e -> NAMED_STRUCT(');
-        expect(sql).toContain("'timestamp', CAST(UNIX_TIMESTAMP(STRUCT_ELEMENT(e, 'timestamp')) * 1000 AS BIGINT)");
-        expect(sql).toContain("'name', STRUCT_ELEMENT(e, 'name')");
-        expect(sql).toContain("'attributes', STRUCT_ELEMENT(e, 'attributes')");
         expect(sql).toContain('), events) AS JSON) AS logs');
-        expect(sql).toContain('AS logs');
     });
 });

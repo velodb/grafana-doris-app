@@ -1,6 +1,25 @@
 export type DiscoverQueryStatus = 'idle' | 'loading' | 'success' | 'error';
 
-export type DiscoverQuerySource = 'results' | 'histogram' | 'count' | 'topData' | 'lucene';
+export type DiscoverQuerySource = 'results' | 'histogram' | 'count' | 'topData' | 'fieldStatistics' | 'lucene';
+
+export type FieldStatisticsBucket = {
+    lower: string;
+    upper: string;
+    count: number;
+    ndv?: number;
+};
+
+export type FieldStatisticsTopValue = { value: unknown; count: number };
+
+export type FieldStatisticsResult = {
+    totalCount: number;
+    nonNullCount: number;
+    approximateDistinctCount: number;
+    min: unknown;
+    max: unknown;
+    histogram: FieldStatisticsBucket[];
+    topValues: FieldStatisticsTopValue[];
+};
 
 export type DiscoverQueryLocation = {
     line?: number;
@@ -31,6 +50,8 @@ export type DiscoverQueryState = {
 export type DiscoverSort = {
     field: string;
     direction: 'ASC' | 'DESC';
+    variantPath?: string[];
+    variantType?: string;
 };
 
 export type DiscoverColumnLayout = {

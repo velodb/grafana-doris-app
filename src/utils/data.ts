@@ -1,12 +1,14 @@
+import { t } from 'i18n';
+import { formatDorisTime, getGrafanaUserTimeZone, histogramOrigin, nextHistogramBucket, parseDorisTime, HistogramInterval, buildRelativeTimeRange } from './time';
 import { getAutoInterval } from '../constants';
 import dayjs, { Dayjs, ManipulateType } from 'dayjs';
-import { flatten, orderBy, some } from 'lodash-es';
+import { flatten, some } from 'lodash-es';
 import { nanoid } from 'nanoid';
-import { DiscoverCurrent, AutoInterval, IntervalEnum } from 'types/type';
+import { DiscoverCurrent } from 'types/type';
 export { addSqlFilter, getFilterSQL } from './sql-filter';
 import jsTokens from 'js-tokens';
 import localeData from 'dayjs/plugin/localeData';
-import { DataFrame, FieldType } from '@grafana/data';
+import { DataFrame, FieldType, TimeZone } from '@grafana/data';
 import utc from 'dayjs/plugin/utc';
 dayjs.extend(utc);
 dayjs.extend(localeData);
@@ -45,7 +47,15 @@ export const getFieldType = (columnType: string | undefined) => {
 };
 
 export const isVariantType = (columnType: string | undefined) => {
-    return String(columnType || '').toLocaleUpperCase().includes('VARIANT');
+    return String(columnType || '')
+        .toLocaleUpperCase()
+        .includes('VARIANT');
+};
+
+/** JSON/JSONB fields use the same nested-value shape as Doris VARIANT values in the sidebar. */
+export const isStructuredJsonType = (columnType: string | undefined) => {
+    const normalizedType = String(columnType || '').toLocaleUpperCase();
+    return normalizedType.includes('VARIANT') || normalizedType.includes('JSON');
 };
 
 export function parseJsonLikeValue(value: any): any {
@@ -113,13 +123,19 @@ export function formatFieldDisplayValue(value: any, mode: 'compact' | 'pretty' =
     return String(parsedValue);
 }
 
+/** Formats a row for plain-text previews and clipboard use without leaking rendered HTML. */
+export function formatRecordDisplayValue(record: Record<string, any> | null | undefined): string {
+    if (!record || typeof record !== 'object') {
+        return '-';
+    }
+
+    return Object.entries(record)
+        .map(([key, value]) => `${key}: ${formatFieldDisplayValue(value, 'compact')}`)
+        .join(' ');
+}
+
 export function escapeHtml(value: any): string {
-    return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+    return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 export const DISCOVER_DEFAULT_STATUS: DiscoverCurrent = {
@@ -144,30 +160,30 @@ export enum AggregatableEnum {
 
 export const SEARCHABLE = [
     {
-        label: `Any`,
+        get label() { return t('Any'); },
         value: SearchableEnum.ANY,
     },
     {
-        label: 'Yes',
+        get label() { return t('Yes'); },
         value: SearchableEnum.YES,
     },
     {
-        label: 'No',
+        get label() { return t('No'); },
         value: SearchableEnum.NO,
     },
 ];
 
 export const AGGREGATABLE = [
     {
-        label: `Any`,
+        get label() { return t('Any'); },
         value: AggregatableEnum.ANY,
     },
     {
-        label: 'Yes',
+        get label() { return t('Yes'); },
         value: AggregatableEnum.YES,
     },
     {
-        label: 'No',
+        get label() { return t('No'); },
         value: AggregatableEnum.NO,
     },
 ];
@@ -245,8 +261,8 @@ export function getIndexesStatement(indexes: any[], allField: any[], keywords: s
 export const DISCOVER_SHORTCUTS = [
     {
         key: nanoid(),
-        text: `Last 5 Minutes`,
-        label: `Last 5 Minutes`,
+        get text() { return t('Last 5 Minutes'); },
+        get label() { return t('Last 5 Minutes'); },
         range: (now: dayjs.Dayjs = dayjs()) => [now.add(-5, 'minute').startOf('second'), now],
         format: 'HH:mm',
         raw: {
@@ -258,8 +274,8 @@ export const DISCOVER_SHORTCUTS = [
     },
     {
         key: nanoid(),
-        text: `Last 15 Minutes`,
-        label: `Last 15 Minutes`,
+        get text() { return t('Last 15 Minutes'); },
+        get label() { return t('Last 15 Minutes'); },
         raw: {
             from: 'now-15m',
             to: 'now',
@@ -271,8 +287,8 @@ export const DISCOVER_SHORTCUTS = [
     },
     {
         key: nanoid(),
-        text: `Last 1 Hour`,
-        label: `Last 1 Hour`,
+        get text() { return t('Last 1 Hour'); },
+        get label() { return t('Last 1 Hour'); },
         raw: {
             from: 'now-1h',
             to: 'now',
@@ -284,8 +300,8 @@ export const DISCOVER_SHORTCUTS = [
     },
     {
         key: nanoid(),
-        text: `Last 1 Day`,
-        label: `Last 1 Day`,
+        get text() { return t('Last 1 Day'); },
+        get label() { return t('Last 1 Day'); },
         raw: {
             from: 'now-1d',
             to: 'now',
@@ -297,8 +313,8 @@ export const DISCOVER_SHORTCUTS = [
     },
     {
         key: nanoid(),
-        text: `Last 7 Days`,
-        label: `Last 1 Days`,
+        get text() { return t('Last 7 Days'); },
+        get label() { return t('Last 1 Days'); },
         raw: {
             from: 'now-7d',
             to: 'now',
@@ -310,8 +326,8 @@ export const DISCOVER_SHORTCUTS = [
     },
     {
         key: nanoid(),
-        text: `Last 1 Month`,
-        label: `Last 1 Month`,
+        get text() { return t('Last 1 Month'); },
+        get label() { return t('Last 1 Month'); },
         raw: {
             from: 'now-1M',
             to: 'now',
@@ -323,8 +339,8 @@ export const DISCOVER_SHORTCUTS = [
     },
     {
         key: nanoid(),
-        text: `Last 3 Months`,
-        label: `Last 3 Months`,
+        get text() { return t('Last 3 Months'); },
+        get label() { return t('Last 3 Months'); },
         raw: {
             from: 'now-3M',
             to: 'now',
@@ -336,8 +352,8 @@ export const DISCOVER_SHORTCUTS = [
     },
     {
         key: nanoid(),
-        text: `Last 1 Year`,
-        label: `Last 1 Year`,
+        get text() { return t('Last 1 Year'); },
+        get label() { return t('Last 1 Year'); },
         raw: {
             from: 'now-1y',
             to: 'now',
@@ -360,46 +376,50 @@ export const SURROUNDING_LOGS_OPERATORS = [
     },
 ];
 
-export function getLatestTime(id: string) {
+export function getLatestTime(id: string, timeZone: TimeZone = getGrafanaUserTimeZone()) {
     if (!id) {
         return null;
     }
     const selectedItem = DISCOVER_SHORTCUTS.find(item => item.key === id);
+    if (selectedItem?.raw) {
+        const range = buildRelativeTimeRange(String(selectedItem.raw.from), String(selectedItem.raw.to), timeZone);
+        return [dayjs(range.from.valueOf()), dayjs(range.to.valueOf())];
+    }
     return selectedItem?.range();
 }
 
 export const TIME_INTERVALS = [
     {
         value: 'auto',
-        label: `Auto`,
+        get label() { return t('Auto'); },
     },
     {
         value: 'second',
-        label: `Second`,
+        get label() { return t('Second'); },
     },
     {
         value: 'minute',
-        label: `Minute`,
+        get label() { return t('Minute'); },
     },
     {
         value: 'hour',
-        label: `Hour`,
+        get label() { return t('Hour'); },
     },
     {
         value: 'day',
-        label: `Day`,
+        get label() { return t('Day'); },
     },
     {
         value: 'week',
-        label: `Week`,
+        get label() { return t('Week'); },
     },
     {
         value: 'month',
-        label: `Month`,
+        get label() { return t('Month'); },
     },
     {
         value: 'year',
-        label: `Year`,
+        get label() { return t('Year'); },
     },
 ];
 
@@ -544,52 +564,33 @@ export function resetDate(date: Dayjs, interval: ManipulateType) {
     return date_reset;
 }
 
-export function getDateRange(startDate: Dayjs, endDate: Dayjs, interval: any) {
-    const DATE_FORMAT = formatDate(interval.interval_unit);
-    if (dayjs(startDate, DATE_FORMAT).isSame(dayjs(endDate, DATE_FORMAT), interval.interval_unit)) {
-        return [endDate];
-    }
-    let date: any = resetDate(startDate, interval.interval_unit);
-    const formatStartDate = date.format(DATE_FORMAT);
-    const dates = [formatStartDate];
-    do {
-        date = dayjs(date).add(interval.interval_value, interval.interval_unit);
-        if (dayjs(date).isBefore(endDate)) {
-            dates.push(date.format(DATE_FORMAT));
+export function getDateRange(startDate: Dayjs, endDate: Dayjs, interval: HistogramInterval, timeZone: TimeZone = getGrafanaUserTimeZone()): number[] {
+    const dates: number[] = [];
+    let date = histogramOrigin(startDate, interval, timeZone);
+    while (date.valueOf() < endDate.valueOf()) {
+        dates.push(date.valueOf());
+        const next = nextHistogramBucket(date, interval, timeZone);
+        if (next.valueOf() <= date.valueOf()) {
+            break;
         }
-    } while (dayjs(date).isBefore(endDate));
+        date = next;
+    }
     return dates;
 }
 
-export function getChartsData(tableDataCharts: any[], currentDate: [Dayjs, Dayjs]) {
-    const selectInterval: AutoInterval = getAutoInterval(currentDate);
-    const [startDate, endDate] = currentDate;
-    const intervalUnit: any = selectInterval.interval_unit || IntervalEnum.Auto;
-    const timeInterval: any = intervalUnit === IntervalEnum.Auto ? selectInterval : { interval_value: 1, interval_unit: intervalUnit };
-    const dates = getDateRange(startDate as Dayjs, endDate as Dayjs, timeInterval);
-    const tableDataMap = new Map();
-    const result: any[] = [];
-    const DATE_FORMAT_FROM_INTERVAL = formatDate(timeInterval.interval_unit);
-
-    tableDataCharts.forEach(e => {
-        const currentLocale = dayjs.locale();
-        const date = dayjs.utc(e['TT']).locale(currentLocale).format(DATE_FORMAT_FROM_INTERVAL);
-        tableDataMap.set(date, e['sum(cnt)']);
-    });
-    dates.forEach(date => {
-        const newDate = dayjs(date).format(DATE_FORMAT_FROM_INTERVAL);
-        if (!tableDataMap.get(newDate)) {
-            tableDataMap.set(newDate, null);
+export function getChartsData(tableDataCharts: any[], currentDate: [Dayjs, Dayjs], timeZone: TimeZone = getGrafanaUserTimeZone(), interval?: HistogramInterval) {
+    const selected = interval || getAutoInterval(currentDate) as HistogramInterval;
+    const values = new Map<number, number | null>(getDateRange(currentDate[0], currentDate[1], selected, timeZone).map(time => [time, null]));
+    for (const row of tableDataCharts) {
+        const key = parseDorisTime(row.TT).valueOf();
+        if (Number.isFinite(key)) {
+            values.set(key, Number(row['sum(cnt)'] || 0));
         }
-    });
-
-    tableDataMap.forEach((value, key) => {
-        result.push({
-            TT: key,
-            ['sum(cnt)']: value,
-        });
-    });
-    return orderBy(result, ['TT'], ['asc']);
+    }
+    return [...values.entries()].sort(([a], [b]) => a - b).map(([time, count]) => ({
+        TT: time, label: formatDorisTime(time, timeZone, 'YYYY-MM-DD HH:mm:ss Z'),
+        bucketEnd: nextHistogramBucket(dayjs.utc(time), selected, timeZone).valueOf(), 'sum(cnt)': count,
+    }));
 }
 
 export function convertColumnToRow(frame: any): Array<Record<string, any>> {
@@ -611,7 +612,7 @@ export function convertColumnToRow(frame: any): Array<Record<string, any>> {
                 // 如果是时间字段，转换为 Dayjs 对象
                 row[fieldNames[j]] = formatTimestampToDateTime(row[fieldNames[j]], frame.schema.fields[j].precision || 3);
             }
-            if (isVariantType(frame.schema.fields[j].type)) {
+            if (isStructuredJsonType(frame.schema.fields[j].type)) {
                 // 如果是 VARIANT 类型，转换为 JSON 对象
                 row[fieldNames[j]] = parseJsonLikeValue(row[fieldNames[j]]);
             }
@@ -633,6 +634,7 @@ export function convertColumnToRowViaFieldsType(frame: any, fields: any): Array<
 
     const numRows = columns[0].length;
     const rows: Array<Record<string, any>> = [];
+    const fieldsByName = new Map((Array.isArray(fields) ? fields : []).map((field: any) => [field?.Field, field]));
 
     for (let i = 0; i < numRows; i++) {
         const row: Record<string, any> = {};
@@ -643,9 +645,9 @@ export function convertColumnToRowViaFieldsType(frame: any, fields: any): Array<
                 row[fieldNames[j]] = formatTimestampToDateTime(row[fieldNames[j]], frame.schema.fields[j].precision || 3);
                 // row[fieldNames[j]] = dayjs.utc(row[fieldNames[j]]).locale(currentLocale).format('YYYY-MM-DD HH:mm:ss.SSS');
             }
-            const currentFieldInfo = fields.filter((item: any) => item.Field === frame.schema.fields[j].name)[0];
+            const currentFieldInfo = fieldsByName.get(frame.schema.fields[j].name);
             // 如果是 VARIANT 类型，转换为 JSON 对象
-            if (currentFieldInfo && isVariantType(currentFieldInfo.Type)) {
+            if (currentFieldInfo && isStructuredJsonType(currentFieldInfo.Type)) {
                 row[fieldNames[j]] = parseJsonLikeValue(row[fieldNames[j]]);
             }
         }
@@ -656,8 +658,7 @@ export function convertColumnToRowViaFieldsType(frame: any, fields: any): Array<
 }
 
 // 格式化时间戳为 DATETIME([number]) 格式
-export function formatTimestampToDateTime(timestamp: any, precision = 3) {
-    const currentLocale = dayjs.locale();
+export function formatTimestampToDateTime(timestamp: any, precision = 3, timeZone: TimeZone = 'utc') {
     // 基础格式：YYYY-MM-DD HH:mm:ss
     let formatString = 'YYYY-MM-DD HH:mm:ss';
 
@@ -666,7 +667,7 @@ export function formatTimestampToDateTime(timestamp: any, precision = 3) {
         formatString += `.${'S'.repeat(precision)}`;
     }
     // 转换时间戳并格式化
-    return dayjs.utc(timestamp).locale(currentLocale).format(formatString);
+    return formatDorisTime(timestamp, timeZone, formatString);
 }
 
 function parseJsonIfString(item: any) {
@@ -703,10 +704,16 @@ function normalizeTraceTags(item: any) {
     }
 
     if (parsed && typeof parsed === 'object') {
-        return Object.entries(parsed).map(([key, value]) => ({
-            key,
-            value,
-        }));
+        const tags: Array<{ key: string; value: string }> = [];
+        const visit = (value: any, key: string) => {
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                Object.entries(value).forEach(([child, nested]) => visit(nested, key ? `${key}.${child}` : child));
+            } else {
+                tags.push({ key, value: typeof value === 'string' ? value : JSON.stringify(value) ?? '' });
+            }
+        };
+        Object.entries(parsed).forEach(([key, value]) => visit(value, key));
+        return tags;
     }
 
     return [];
@@ -757,12 +764,7 @@ function normalizeTraceLogs(item: any) {
 
         return {
             timestamp: normalizeTraceLogTimestamp(parsedEvent.timestamp ?? parsedEvent.time),
-            fields: [
-                ...(eventName !== undefined ? [{ key: 'event', value: eventName }] : []),
-                ...existingFields,
-                ...eventAttributes,
-                ...extraFields,
-            ],
+            fields: [...(eventName !== undefined ? [{ key: 'event', value: eventName }] : []), ...existingFields, ...eventAttributes, ...extraFields],
         };
     });
 }
@@ -854,7 +856,7 @@ export function generateHighlightedResults(data: { search_value: string; indexes
                         highlightValue = itemValue;
                     } else if (strValue.includes(parsedKeyword)) {
                         // highlightValue = highlightDelimiter(strValue, parsedKeyword);
-                          highlightValue = strValue;
+                        highlightValue = strValue;
                     }
                 } else {
                     const tokenizedAns = Array.from(jsTokens(strValue)).map(item => item.value);
@@ -902,7 +904,7 @@ export function generateHighlightedResults(data: { search_value: string; indexes
             } else {
                 highlightValue = escapeHtml(highlightValue);
             }
-            itemSource += `<span class="field-key">${escapeHtml(key)}:</span>${highlightValue} `;
+            itemSource += `<span class="field-pair"><span class="field-key">${escapeHtml(key)}:</span><span class="field-value">${highlightValue}</span></span>`;
         }
 
         return {
@@ -914,4 +916,15 @@ export function generateHighlightedResults(data: { search_value: string; indexes
     return _sourceResult;
 }
 
-export const QUERY_TRACE_FIELDS = ['trace_id','span_id','parent_span_id','span_name','service_name']
+export const QUERY_TRACE_FIELDS = ['trace_id', 'span_id', 'parent_span_id', 'span_name', 'service_name'];
+
+/** Presentation copy; query cursors and filter values always use the original row. */
+export function formatRecordTimes(record: Record<string, any>, fields: any[], timeZone: TimeZone): Record<string, any> {
+    const displayed = { ...record };
+    for (const field of fields) {
+        if (isValidTimeFieldType(String(field.Type || '').toUpperCase()) && displayed[field.Field] != null) {
+            displayed[field.Field] = formatTimestampToDateTime(displayed[field.Field], 3, timeZone);
+        }
+    }
+    return displayed;
+}

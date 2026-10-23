@@ -1,12 +1,12 @@
 'use client';
+import { t } from 'i18n';
 
 import { Row, ColumnDef } from '@tanstack/react-table';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { ColumnStyleWrapper, HoverStyle } from '../discover-content/discover-content.style';
 import { useAtom, useAtomValue } from 'jotai';
 import { useRequest } from 'ahooks';
 import { css } from '@emotion/css';
-import { SurroundingContentItem } from './surrounding-content-item';
 import { SurroundingLogsActions } from './logs-actions';
 import SurroundingDiscoverFilter from './discover-filter';
 import { Button, IconButton, LoadingBar, Tab, TabContent, TabsBar, useTheme2 } from '@grafana/ui';
@@ -27,28 +27,34 @@ import {
     beforeCountAtom,
     beforeTimeAtom,
     beforeTimeFieldPageSizeAtom,
-    surroundingDataFilterAtom,
-    surroundingSelectedFieldsAtom,
+    dataFilterAtom,
+    selectedFieldsAtom,
     tableFieldsAtom,
+    timeZoneAtom,
 } from 'store/discover';
 // import dayjs from 'dayjs';
-import { get, sortBy } from 'lodash-es';
-import { getSurroundingDataService } from 'services/discover';
+import { sortBy } from 'lodash-es';
+import { getSurroundingDataWithWindow as getSurroundingDataService } from 'services/discover';
 import { lastValueFrom } from 'rxjs';
-import { convertColumnToRowViaFieldsType, escapeHtml, formatFieldDisplayValue, formatTimestampToDateTime, parseJsonLikeValue } from 'utils/data';
+import { convertColumnToRowViaFieldsType, escapeHtml, formatFieldDisplayValue, formatRecordDisplayValue, formatRecordTimes, generateHighlightedResults, formatTimestampToDateTime, isStructuredJsonType, isValidTimeFieldType, parseJsonLikeValue } from 'utils/data';
 import { generateTableDataUID } from 'utils/utils';
-import { SurroundingContentTableActions } from './content/content-table-actions';
+import { SurroundingColumnAction } from './column-action';
 import { logError } from '@grafana/runtime';
 import { toError } from 'utils/errors';
+import { VariantValueViewer } from 'components/discover-content/variant-value-viewer';
+import { getVariantFieldValue } from 'utils/variant-fields';
+import { LongTextCell } from 'components/long-text-cell';
 
 export default function SurroundingLogs() {
     const theme = useTheme2();
+    const timeZone = useAtomValue(timeZoneAtom);
     const selectedRow = useAtomValue(selectedRowAtom);
     const selectdbDS = useAtomValue(selectedDatasourceAtom);
     const currentTimeField = useAtomValue(currentTimeFieldAtom);
-    const [selectedSurroundingFields, setSelectedSurroundingFields] = useAtom(surroundingSelectedFieldsAtom);
-    const [surroundingDataFilter] = useAtom<any>(surroundingDataFilterAtom);
-    const hasSelectedFields = selectedSurroundingFields.length > 0;
+    const [selectedFields, setSelectedFields] = useAtom(selectedFieldsAtom);
+    const dataFilter = useAtomValue(dataFilterAtom);
+    const [filterEnabled, setFilterEnabled] = useState(false);
+    const hasSelectedFields = selectedFields.length > 0;
     const [fields, setFields] = useState<any[]>([]);
     const currentCluster = useAtomValue(currentClusterAtom);
     const currentTable = useAtomValue(currentTableAtom);
@@ -62,9 +68,14 @@ export default function SurroundingLogs() {
     const [beforeTime, setBeforeTime] = useAtom(beforeTimeAtom);
     const [afterTime, setAfterTime] = useAtom(afterTimeAtom);
     const tableFields = useAtomValue(tableFieldsAtom);
+    const contextKey = JSON.stringify([selectdbDS?.uid, currentDatabase, currentTable, currentTimeField, selectedRow._uid, selectedRow.time, filterEnabled, filterEnabled ? dataFilter : []]);
+    const contextRef = useRef(contextKey);
+    contextRef.current = contextKey;
+    const requestSurrounding = (params: SurroundingParams) => lastValueFrom(getSurroundingDataService({ selectdbDS, ...params }))
+        .then(response => ({ ...response, surroundingContext: contextKey }));
     const [state, updateState] = useState([
         {
-            label: 'Table',
+            label: t('Table'),
             value: 'Table',
             active: true,
         },
@@ -76,42 +87,34 @@ export default function SurroundingLogs() {
     ]);
 
     function handleRemove(field: any) {
-        const index = selectedSurroundingFields.findIndex((item: any) => item.Field === field.Field);
-        selectedSurroundingFields.splice(index, 1);
-        setSelectedSurroundingFields([...selectedSurroundingFields]);
+        setSelectedFields(current => current.filter((item: any) => item.Field !== field.Field));
     }
 
-    const getAfterResultWrap = (result: any[]) => {
-        const [_, ...newResult] = result;
-        return newResult;
-    }
 
     const { loading: getAfterSurroundingDataLoading, run: getAfterSurroundingData } = useRequest(
         ({ pageSize = afterTimeFieldPageSize, time = afterTime }: any) => {
             const params: SurroundingParams = getQueryParams({
-                pageSize: pageSize + 1,
+                pageSize,
                 operator: '>',
                 time,
             });
 
-            return lastValueFrom(
-                getSurroundingDataService({
-                    selectdbDS,
-                    ...params,
-                }),
-            );
+            return requestSurrounding(params);
         },
         {
             manual: true,
-            onSuccess: async (res: any, params: any) => {
+            onSuccess: async (res: any) => {
+                if (res.surroundingContext !== contextRef.current) {
+                    return;
+                }
                 if (res.ok) {
                     const rowsData = convertColumnToRowViaFieldsType(res.data.results.getSurroundingData.frames[0], tableFields);
-                    const result = getAfterResultWrap(generateSurroundingResult(rowsData, currentTimeField));
-                    let data = [...surroundingTableData];
-                    data.push(...result);
-                    setAfterCount(afterCount + result.length);
-                    setAfterTime(result[result.length - 1]._original[currentTimeField]);
-                    setSurroundingTableData(data);
+                    const result = generateSurroundingResult(rowsData, currentTimeField);
+                    setAfterCount(previous => previous + result.length);
+                    if (result.length) {
+                        setAfterTime(result[result.length - 1]._original[currentTimeField]);
+                    }
+                    setSurroundingTableData(previous => [...previous, ...result]);
                     // setTimeout(() => {
                     //     scrollToSelectedRow();
                     // }, 50);
@@ -133,8 +136,8 @@ export default function SurroundingLogs() {
             cluster: currentCluster,
             theme: theme.isDark ? 'dark' : 'light',
         };
-        if (surroundingDataFilter.length > 0) {
-            params.data_filters = surroundingDataFilter;
+        if (filterEnabled && dataFilter.length > 0) {
+            params.data_filters = dataFilter;
         }
         return params;
     }
@@ -147,24 +150,22 @@ export default function SurroundingLogs() {
                 time,
             });
 
-            return lastValueFrom(
-                getSurroundingDataService({
-                    selectdbDS,
-                    ...params,
-                }),
-            );
+            return requestSurrounding(params);
         },
         {
             manual: true,
-            onSuccess: async (res: any, params: any) => {
+            onSuccess: async (res: any) => {
+                if (res.surroundingContext !== contextRef.current) {
+                    return;
+                }
                 if (res.ok) {
                     const rowsData = convertColumnToRowViaFieldsType(res.data.results.getSurroundingData.frames[0], tableFields);
                     const result = generateSurroundingResult(rowsData, currentTimeField);
-                    let data = [...surroundingTableData];
-                    data.unshift(...result);
-                    setBeforeCount(beforeCount + result.length);
-                    setBeforeTime(result[0]._original[currentTimeField]);
-                    setSurroundingTableData(data);
+                    setBeforeCount(previous => previous + result.length);
+                    if (result.length) {
+                        setBeforeTime(result[0]._original[currentTimeField]);
+                    }
+                    setSurroundingTableData(previous => [...result, ...previous]);
                     // setTimeout(() => {
                     //     scrollToSelectedRow();
                     // }, 50);
@@ -187,35 +188,33 @@ export default function SurroundingLogs() {
             });
             const afterTimeParams: SurroundingParams = getQueryParams({
                 operator: '>',
-                pageSize: 6
+                pageSize: 5
             });
             return Promise.all([
-                lastValueFrom(
-                    getSurroundingDataService({
-                        selectdbDS,
-                        ...prevTimeParams,
-                    }),
-                ),
-                lastValueFrom(
-                    getSurroundingDataService({
-                        selectdbDS,
-                        ...afterTimeParams,
-                    }),
-                ),
+                requestSurrounding(prevTimeParams),
+                requestSurrounding(afterTimeParams),
             ]);
         },
         {
-            refreshDeps: [surroundingDataFilter],
+            refreshDeps: [contextKey],
             onSuccess: async (res: any) => {
+                if (res.some((item: any) => item.surroundingContext !== contextRef.current)) {
+                    return;
+                }
                 if (res[0].ok && res[1].ok) {
                     const rowsData1 = convertColumnToRowViaFieldsType(res[0].data.results.getSurroundingData.frames[0], tableFields);
                     const rowsData2 = convertColumnToRowViaFieldsType(res[1].data.results.getSurroundingData.frames[0], tableFields);
                     const result1 = generateSurroundingResult(rowsData1, currentTimeField);
-                    const result2 = getAfterResultWrap(generateSurroundingResult(rowsData2, currentTimeField));
+                    const result2 = generateSurroundingResult(rowsData2, currentTimeField);
                     const selectedResult = generateSurroundingResult([selectedRow._original], currentTimeField);
                     const data = [...result1, ...selectedResult, ...result2];
                     const rowsDataWithUID = await generateTableDataUID(data);
+                    if (res.some((item: any) => item.surroundingContext !== contextRef.current)) {
+                        return;
+                    }
 
+                    setBeforeCount(result1.length);
+                    setAfterCount(result2.length);
                     if (result1.length > 0) {
                         setBeforeCount(result1.length);
                         setBeforeTime(result1[0]._original[currentTimeField]);
@@ -247,13 +246,13 @@ export default function SurroundingLogs() {
             return {
                 _original: item._original,
                 time: item._original?.[currentTimeField] || '',
-                _source: item._source,
+                _source: generateHighlightedResults({ search_value: '', indexes: [] }, [formatRecordTimes(item._original, tableFields, timeZone)])[0]._source,
                 _uid: item._uid,
                 selected: item._uid === selectedRow._uid,
             };
         });
         setFields(data);
-    }, [surroundingTableData, currentTimeField, selectedRow._uid]);
+    }, [surroundingTableData, currentTimeField, selectedRow._uid, tableFields, timeZone]);
 
     const renderBeforeLoadingBar = () => {
         if (initLoading || getBeforeSurroundingDataLoading) {
@@ -336,8 +335,9 @@ export default function SurroundingLogs() {
                         <table className="bg-b1/20 pl-4 backdrop-blur-md dark:bg-n9/60">
                             <tbody>
                                 {subTableData.map((item: any) => {
-                                    const fieldValue = formatFieldDisplayValue(item.value, 'compact');
                                     const fieldName = item.field;
+                                    const fieldType = tableFields.find((field: any) => field.Field === fieldName)?.Type;
+                                    const fieldValue = isValidTimeFieldType(String(fieldType || '').toUpperCase()) && item.value != null ? formatTimestampToDateTime(item.value, 3, timeZone) : formatFieldDisplayValue(item.value, 'compact');
                                     const tableRowStyle = css`
                                         &:hover {
                                             .filter-table-content {
@@ -358,12 +358,14 @@ export default function SurroundingLogs() {
                                                         visibility: hidden;
                                                     `}`}
                                                 >
-                                                    <SurroundingContentTableActions fieldName={fieldName} fieldValue={fieldValue} />
+                                                    <SurroundingColumnAction fieldName={fieldName} />
                                                 </div>
                                             </td>
                                             <td className="h-8 text-xs">{fieldName || '-'}</td>
                                             <td className="h-8 whitespace-normal text-xs">
-                                                <div className="w-full break-all">{fieldValue}</div>
+                                                <div className="w-full break-all">
+                                                    {isStructuredJsonType(fieldType) ? <VariantValueViewer value={item.value} /> : fieldValue}
+                                                </div>
                                             </td>
                                         </tr>
                                     );
@@ -372,26 +374,7 @@ export default function SurroundingLogs() {
                         </table>
                     )}
                     {state[1].active && (
-                        <div>
-                            <pre
-                                className={css`
-                                    padding: 16px;
-                                    margin: 0;
-                                    overflow-x: auto;
-                                    white-space: pre-wrap;
-                                    word-break: break-all;
-                                    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-                                    font-size: 12px;
-                                    line-height: 1.5;
-                                    ${theme.isDark ? 'background-color: #1e1e1e; color: #d4d4d4;' : 'background-color: #f5f5f5; color: #333;'}
-                                    border-radius: 4px;
-                                    max-height: 400px;
-                                    overflow-y: auto;
-                                `}
-                            >
-                                {formatFieldDisplayValue(processedData, 'pretty')}
-                            </pre>
-                        </div>
+                        <VariantValueViewer value={processedData} rootName="JSON" />
                     )}
                 </TabContent>
                 {/* Surrounding items link is handled by parent (DiscoverContent). No action here. */}
@@ -420,16 +403,22 @@ export default function SurroundingLogs() {
     const columns = useMemo<Array<ColumnDef<any>>>(() => {
         let dynamicColumns: Array<ColumnDef<any>> = [
             {
+                id: '__expand',
                 accessorKey: 'collapse',
                 header: ``,
+                size: 48,
+                minSize: 48,
+                maxSize: 48,
+                enableResizing: false,
+                enableSorting: false,
                 cell: ({ row, getValue }) => {
                     return (
                         row.getCanExpand() && (
                             <div>
                                 {row.getIsExpanded() ? (
-                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-down" tooltip="Collapse" />
+                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-down" tooltip={t('Collapse')} />
                                 ) : (
-                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-right" tooltip="Expand" />
+                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-right" tooltip={t('Expand')} />
                                 )}
                                 <div className="ml-1">{getValue<string>()}</div>
                             </div>
@@ -438,13 +427,16 @@ export default function SurroundingLogs() {
                 },
             },
             {
-                header: 'Time',
+                id: '__time',
+                header: () => t('Time'),
                 accessorKey: 'time',
+                size: 240,
+                minSize: 80,
+                maxSize: 800,
                 cell: ({ row, getValue }) => {
                     const fieldValue = getValue<string>();
                     const fieldName = currentTimeField;
-                    const fieldType = 'DATE';
-                    const timeField = formatTimestampToDateTime(fieldValue);
+                    const timeField = formatTimestampToDateTime(fieldValue, 3, timeZone);
                     return (
                         <div
                             className={`${css`
@@ -463,7 +455,7 @@ export default function SurroundingLogs() {
                                         visibility: hidden;
                                     `}`}
                                 >
-                                    <SurroundingContentItem fieldName={fieldName} fieldValue={fieldValue} fieldType={fieldType} />
+                                    <SurroundingColumnAction fieldName={fieldName} />
                                 </div>
                             </div>
                         </div>
@@ -473,15 +465,27 @@ export default function SurroundingLogs() {
         ];
         if (!hasSelectedFields) {
             dynamicColumns.push({
+                id: '__source',
                 accessorKey: '_source',
                 header: '_source',
+                size: 640,
+                minSize: 80,
+                maxSize: 800,
+                enableSorting: false,
                 cell: ({ row, getValue }) => {
                     function createMarkup() {
                         return { __html: getValue<string>() };
                     }
                     return (
-                        <div
+                        <LongTextCell
+                            copyText={formatRecordDisplayValue(row.original._original)}
                             className={css`
+                                display: block;
+                                width: 100%;
+                                max-height: 12rem;
+                                overflow: auto;
+                                word-break: break-all;
+                                white-space: pre-wrap;
                                 padding-top: 0.5rem;
                                 padding-bottom: 0.5rem;
                                 font-size: 0.875rem;
@@ -498,23 +502,25 @@ export default function SurroundingLogs() {
                                 <div
                                     dangerouslySetInnerHTML={createMarkup()}
                                     className={css`
-                                        max-height: 12rem;
-                                        overflow: auto;
-                                        word-break: break-all;
-                                        white-space: pre-wrap;
+                                        display: block;
+                                        width: 100%;
                                     `}
                                 />
                             </ColumnStyleWrapper>
-                        </div>
+                        </LongTextCell>
                     );
                 },
             });
         } else {
             dynamicColumns = [
                 ...dynamicColumns,
-                ...selectedSurroundingFields.map((field: any) => {
+                ...selectedFields.map((field: any) => {
                     return {
-                        accessorKey: field.Field,
+                        id: `field:${field.Field}`,
+                        accessorFn: (row: any) => getVariantFieldValue(row._original, field),
+                        size: 240,
+                        minSize: 80,
+                        maxSize: 800,
                         header: () => (
                             <div
                                 className={css`
@@ -525,7 +531,7 @@ export default function SurroundingLogs() {
                                 <div>{field.Field}</div>
                                 <IconButton
                                     name="times"
-                                    tooltip="Remove"
+                                    tooltip={t('Remove')}
                                     style={{
                                         marginLeft: '8px',
                                         cursor: 'pointer',
@@ -539,9 +545,9 @@ export default function SurroundingLogs() {
                                 />
                             </div>
                         ),
-                        cell: ({ row, getValue }: any) => {
-                            // let fieldValue = row.original._original[field.Field];
-                            const fieldValue = formatFieldDisplayValue(get(row.original._original, field.Field), 'compact');
+                        cell: ({ row }: any) => {
+                            const rawFieldValue = getVariantFieldValue(row.original._original, field);
+                            const fieldValue = isValidTimeFieldType(String(field.Type || '').toUpperCase()) && rawFieldValue != null ? formatTimestampToDateTime(rawFieldValue, 3, timeZone) : formatFieldDisplayValue(rawFieldValue, 'compact');
                             const fieldName = field.Field;
                             const fieldType = field.Type;
                             return (
@@ -552,18 +558,18 @@ export default function SurroundingLogs() {
                                         min-height: 48px;
                                     `}`}
                                 >
-                                    <div className={`max-h-48 overflow-auto`}>
+                                    {isStructuredJsonType(fieldType) ? <VariantValueViewer value={rawFieldValue} /> : field.value === 'trace_id' && fieldValue ? <Button>{fieldValue}</Button> : <LongTextCell copyText={fieldValue} className="max-h-48 overflow-auto">
                                         <div className="flex items-center break-all py-4">
-                                            {field.value === 'trace_id' && fieldValue ? <Button>{fieldValue}</Button> : <span className="text-xs">{fieldValue}</span>}
+                                            <span className="text-xs">{fieldValue}</span>
                                         </div>
-                                    </div>
+                                    </LongTextCell>}
                                     {
                                         fieldValue ? <div
                                             className={`filter-content ${css`
                                             visibility: hidden;
                                         `}`}
                                         >
-                                            <SurroundingContentItem fieldName={fieldName} fieldValue={fieldValue} fieldType={fieldType} />
+                                            <SurroundingColumnAction fieldName={fieldName} />
                                         </div> : null
                                     }
 
@@ -576,11 +582,11 @@ export default function SurroundingLogs() {
         }
         return dynamicColumns;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentTimeField, handleRemove, hasSelectedFields, selectedSurroundingFields]);
+    }, [timeZone, currentTimeField, handleRemove, hasSelectedFields, selectedFields]);
 
     return (
         <div>
-            <SurroundingDiscoverFilter dataFilter={surroundingDataFilter} />
+            <SurroundingDiscoverFilter enabled={filterEnabled} onEnabledChange={setFilterEnabled} />
             <div className="h-[2px] bg-b1 dark:bg-black" />
             <div style={{ position: 'relative' }}>
                 <SurroundingLogsActions
@@ -590,7 +596,7 @@ export default function SurroundingLogs() {
                     type="before"
                     timeFieldPageSize={beforeTimeFieldPageSize}
                     setTimeFieldPageSize={setBeforeTimeFieldPageSize}
-                    tips="Old records"
+                    tips={t('Old records')}
                     count={beforeCount}
                 />
                 {renderBeforeLoadingBar()}
@@ -617,7 +623,7 @@ export default function SurroundingLogs() {
                     type="after"
                     timeFieldPageSize={afterTimeFieldPageSize}
                     setTimeFieldPageSize={setAfterTimeFieldPageSize}
-                    tips={`New records`}
+                    tips={t('New records')}
                     count={afterCount}
                 />
             </div>

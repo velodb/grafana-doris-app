@@ -1,7 +1,7 @@
+import { t } from 'i18n';
 import { css } from '@emotion/css';
 import { Button, IconButton } from '@grafana/ui';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 interface SurroundingLogsActionsProps {
     getSurroundingData: (params: { time: string }) => void;
@@ -16,7 +16,6 @@ interface SurroundingLogsActionsProps {
 
 export function SurroundingLogsActions(props: SurroundingLogsActionsProps) {
     const { getSurroundingData, getSurroundingDataLoading, time, timeFieldPageSize, tips, count, type } = props;
-    const { t } = useTranslation();
     return (
         <div
             className={css`
@@ -34,16 +33,16 @@ export function SurroundingLogsActions(props: SurroundingLogsActionsProps) {
                 type="reset"
             >
                 {!getSurroundingDataLoading && (
-                    <>{type === 'before' ? <IconButton name="arrow-up" aria-label={`Load After`} /> : <IconButton name="arrow-down" aria-label={`Load Before`} />}</>
+                    <>{type === 'before' ? <IconButton name="arrow-up" aria-label={t('Load After')} /> : <IconButton name="arrow-down" aria-label={t('Load Before')} />}</>
                 )}
-                {`Load`} {timeFieldPageSize} {t`Items`}
+                {t('Load {{count}} items', { count: timeFieldPageSize })}
             </Button>
             <div
                 className={css`
                     margin-left: 8px;
                 `}
             >
-                {count} {`Items`} {` `}
+                {t('{{count}} items', { count })}{' '}
                 {tips}
             </div>
         </div>

@@ -27,7 +27,7 @@ export const DEFAULT_LOGS_CONFIG: LogsConfig = {
 };
 
 export function normalizeApplicationAttributeKey(value?: string): string {
-  return value?.trim() || DEFAULT_LOGS_CONFIG.applicationAttributeKey || 'app';
+  return value === undefined ? DEFAULT_LOGS_CONFIG.applicationAttributeKey || 'app' : value.trim();
 }
 
 export function mergeLogsConfig(logsConfig?: LogsConfig): LogsConfig {

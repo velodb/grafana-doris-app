@@ -1,5 +1,10 @@
 CREATE DATABASE IF NOT EXISTS otel;
 
+CREATE ROLE IF NOT EXISTS doris_reader;
+CREATE ROLE IF NOT EXISTS doris_writer;
+GRANT SELECT_PRIV ON otel.* TO ROLE doris_reader;
+GRANT SELECT_PRIV, LOAD_PRIV ON otel.* TO ROLE doris_writer;
+
 DROP TABLE IF EXISTS otel.otel_logs;
 
 CREATE TABLE otel.otel_logs (
@@ -36,3 +41,13 @@ INSERT INTO otel.otel_logs VALUES
   (NOW(3) - INTERVAL 12 HOUR,   'checkout', 'checkout-1', '00000000000000000000000000000011', '000000000000000b', 9,  'INFO',  'older checkout request',       '{"app":"app1","k8s.pod.label.app":"checkout","k8s.namespace.name":"shop","k8s.pod.name":"checkout-1"}', '{"http.method":"GET"}', 'demo.logger', '1.0.0'),
   (NOW(3) - INTERVAL 2 DAY,     'archive',  'archive-1',  '00000000000000000000000000000012', '000000000000000c', 9,  'INFO',  'outside default time range',    '{"app":"old-app","k8s.pod.label.app":"archive","k8s.namespace.name":"archive","k8s.pod.name":"archive-1"}', '{}', 'demo.logger', '1.0.0');
 
+-- HTTP status examples for the Discover Lucene query:
+-- log_attributes["http.status"]:200
+INSERT INTO otel.otel_logs VALUES
+  (NOW(3) - INTERVAL 2 MINUTE,  'checkout', 'checkout-1', '10000000000000000000000000000001', '1000000000000001', 9,  'INFO',  'GET /api/orders returned 200',       '{"app":"app1","k8s.pod.label.app":"checkout","k8s.namespace.name":"shop","k8s.pod.name":"checkout-1"}', '{"http.method":"GET","http.route":"/api/orders","http.status":200,"duration_ms":32}', 'demo.logger', '1.0.0'),
+  (NOW(3) - INTERVAL 8 MINUTE,  'checkout', 'checkout-2', '10000000000000000000000000000002', '1000000000000002', 9,  'INFO',  'POST /api/checkout returned 200',    '{"app":"app1","k8s.pod.label.app":"checkout","k8s.namespace.name":"shop","k8s.pod.name":"checkout-2"}', '{"http.method":"POST","http.route":"/api/checkout","http.status":200,"duration_ms":143}', 'demo.logger', '1.0.0'),
+  (NOW(3) - INTERVAL 15 MINUTE, 'catalog',  'catalog-1',  '10000000000000000000000000000003', '1000000000000003', 9,  'INFO',  'GET /api/products returned 200',     '{"app":"app2","k8s.pod.label.app":"catalog","k8s.namespace.name":"shop","k8s.pod.name":"catalog-1"}', '{"http.method":"GET","http.route":"/api/products","http.status":200,"duration_ms":58}', 'demo.logger', '1.0.0'),
+  (NOW(3) - INTERVAL 25 MINUTE, 'catalog',  'catalog-2',  '10000000000000000000000000000004', '1000000000000004', 9,  'INFO',  'GET /api/products/42 returned 200',  '{"app":"app2","k8s.pod.label.app":"catalog","k8s.namespace.name":"shop","k8s.pod.name":"catalog-2"}', '{"http.method":"GET","http.route":"/api/products/42","http.status":200,"duration_ms":21}', 'demo.logger', '1.0.0'),
+  (NOW(3) - INTERVAL 40 MINUTE, 'frontend', 'frontend-1', '10000000000000000000000000000005', '1000000000000005', 9,  'INFO',  'GET / returned 200',                 '{"app":"app3","k8s.pod.label.app":"frontend","k8s.namespace.name":"shop","k8s.pod.name":"frontend-1"}', '{"http.method":"GET","http.route":"/","http.status":200,"duration_ms":76}', 'demo.logger', '1.0.0'),
+  (NOW(3) - INTERVAL 1 HOUR,    'checkout', 'checkout-1', '10000000000000000000000000000006', '1000000000000006', 13, 'WARN',  'GET /api/orders/999 returned 404',   '{"app":"app1","k8s.pod.label.app":"checkout","k8s.namespace.name":"shop","k8s.pod.name":"checkout-1"}', '{"http.method":"GET","http.route":"/api/orders/999","http.status":404,"duration_ms":12}', 'demo.logger', '1.0.0'),
+  (NOW(3) - INTERVAL 90 MINUTE,  'checkout', 'checkout-2', '10000000000000000000000000000007', '1000000000000007', 17, 'ERROR', 'POST /api/checkout returned 500',    '{"app":"app1","k8s.pod.label.app":"checkout","k8s.namespace.name":"shop","k8s.pod.name":"checkout-2"}', '{"http.method":"POST","http.route":"/api/checkout","http.status":500,"duration_ms":1204,"error.type":"PaymentGatewayError"}', 'demo.logger', '1.0.0');

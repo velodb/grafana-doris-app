@@ -1,3 +1,4 @@
+import { t } from 'i18n';
 import { DiscoverQueryError, DiscoverQueryLocation, DiscoverQuerySource } from 'types/discover';
 
 type QueryErrorContext = {
@@ -24,10 +25,12 @@ export function getQueryErrorMessage(error: any): string {
         error?.backendError ||
         resultError?.error ||
         responseData?.error?.message ||
+        (typeof responseData?.error === 'string' ? responseData.error : undefined) ||
         responseData?.message ||
-        error?.statusText ||
         error?.message ||
-        'Request failed',
+        error?.statusText ||
+        (typeof error === 'string' ? error : undefined) ||
+        t('Request failed'),
     );
 }
 
@@ -127,35 +130,47 @@ function extractLocation(error: any, message: string, generatedSql?: string, sea
 
 function getLikelyCause(message: string) {
     const normalized = message.toLowerCase();
+    if (normalized.includes('an error occurred within the plugin')) {
+        return t('Grafana did not return the underlying plugin error. Check the Grafana server/plugin logs for the cause, or ask your administrator.');
+    }
+    if (normalized.includes('oidc id token is required')) {
+        return t('Sign in with OIDC and enable Forward OAuth Identity for this datasource, then retry the query.');
+    }
+    if (/oidc id token validation failed/.test(normalized)) {
+        return t('Sign in again to refresh your OIDC session. If the error persists, check the identity provider issuer, audience, and signing keys.');
+    }
+    if (/sso profile|jwks|oidc|keyrock|identity provider/.test(normalized)) {
+        return t('Check the Doris SSO Profile and identity provider configuration using the backend message.');
+    }
     if (/syntax|parse|mismatched|unexpected|unterminated|no viable|expected/.test(normalized)) {
-        return 'Check SQL/Lucene keywords, operators, quotes, and matching parentheses near the reported position.';
+        return t('Check SQL/Lucene keywords, operators, quotes, and matching parentheses near the reported position.');
     }
     if (/unknown column|column .* not found|cannot resolve|unresolved column/.test(normalized)) {
-        return 'A referenced field may not exist in the selected table, or its name/case may be incorrect.';
+        return t('A referenced field may not exist in the selected table, or its name/case may be incorrect.');
     }
     if (/cast|type mismatch|incompatible|invalid type|cannot convert/.test(normalized)) {
-        return 'The expression may compare or convert incompatible data types.';
+        return t('The expression may compare or convert incompatible data types.');
     }
     if (/permission|access denied|not authorized|unauthorized|forbidden/.test(normalized)) {
-        return 'The selected datasource user may not have permission to query this table or field.';
+        return t('The selected datasource user may not have permission to query this table or field.');
     }
     if (/timeout|timed out|deadline/.test(normalized)) {
-        return 'The query exceeded its time limit. Narrow the time range or simplify the filters.';
+        return t('The query exceeded its time limit. Narrow the time range or simplify the filters.');
     }
     if (/network|failed to fetch|connection|gateway|unavailable/.test(normalized)) {
-        return 'The datasource or Grafana backend could not be reached. Check connectivity and datasource health.';
+        return t('The datasource or Grafana backend could not be reached. Check connectivity and datasource health.');
     }
-    return 'Review the backend message and generated query for invalid fields, expressions, or datasource-specific syntax.';
+    return t('Review the backend message and generated query for invalid fields, expressions, or datasource-specific syntax.');
 }
 
 export function createDiscoverQueryError(error: any, context: QueryErrorContext): DiscoverQueryError {
     const message = getQueryErrorMessage(error);
     const generatedSql = typeof error?.generatedSql === 'string' ? error.generatedSql : undefined;
-    const sourceLabel = context.source === 'results' ? 'Query' : context.source === 'lucene' ? 'Lucene query' : context.source;
+    const sourceLabel = context.source === 'results' ? t('Query') : context.source === 'lucene' ? t('Lucene query') : context.source === 'histogram' ? t('Histogram') : context.source === 'count' ? t('Count') : context.source === 'topData' ? t('Top values') : t('Field statistics');
 
     return {
         source: context.source,
-        summary: `${sourceLabel} failed`,
+        summary: t('{{source}} failed', { source: sourceLabel }),
         message,
         likelyCause: getLikelyCause(message),
         location: extractLocation(error, message, generatedSql, context.searchValue),

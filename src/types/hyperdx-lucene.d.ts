@@ -11,6 +11,10 @@ declare module '@hyperdx/lucene' {
     term: string;
     prefix?: string;
     quoted?: boolean;
+    regex?: boolean;
+    similarity?: number;
+    proximity?: number;
+    boost?: number;
   }
 
   export interface NodeRangedTerm extends NodeBase {
@@ -36,4 +40,3 @@ declare module '@hyperdx/lucene' {
 
   export function parse(query: string): AST;
 }
-

@@ -1,0 +1,8 @@
+{
+    "name": "VARIANT nested exists checks subcolumn",
+    "lucene": "attrs.http.method:*",
+    "expectedSql": "SELECT * FROM `logs`.`otel_traces` WHERE `attrs`['http']['method'] IS NOT NULL",
+    "databaseName": "logs",
+    "tableName": "otel_traces",
+    "columns": { "attrs": { "name": "attrs", "normalizedType": "Variant", "columnType": "variant" } }
+}

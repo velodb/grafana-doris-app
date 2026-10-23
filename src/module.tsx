@@ -1,3 +1,5 @@
+import { t } from './i18n';
+import { PluginLocaleProvider } from './i18n/PluginLocaleProvider';
 import React, { Suspense, lazy } from 'react';
 import { AppPlugin, type AppRootProps } from '@grafana/data';
 import { LoadingPlaceholder } from '@grafana/ui';
@@ -14,12 +16,6 @@ declare let __webpack_public_path__: string;
 dayjs.extend(weekday);
 dayjs.extend(localeData);
 dayjs.extend(utc);
-import 'dayjs/locale/zh-cn';
-const browserLang = navigator.language.toLowerCase(); // e.g., 'zh-cn', 'en-us'
-const supportedLocales = ['en', 'zh-cn', 'fr'];
-
-const locale = supportedLocales.includes(browserLang) ? browserLang : 'en';
-dayjs.locale(locale);
 
 function ensureTailwindStylesheet() {
   if (typeof document === 'undefined') {
@@ -42,18 +38,18 @@ ensureTailwindStylesheet();
 
 const App = (props: AppRootProps) => (
   <Suspense fallback={<LoadingPlaceholder text="" />}>
-    <LazyApp {...props} />
+    <PluginLocaleProvider><LazyApp {...props} /></PluginLocaleProvider>
   </Suspense>
 );
 
 const AppConfig = (props: AppConfigProps) => (
   <Suspense fallback={<LoadingPlaceholder text="" />}>
-    <LazyAppConfig {...props} />
+    <PluginLocaleProvider><LazyAppConfig {...props} /></PluginLocaleProvider>
   </Suspense>
 );
 
 export const plugin = new AppPlugin<{}>().setRootPage(App).addConfigPage({
-  title: 'Configuration',
+  title: t('Configuration'),
   icon: 'cog',
   body: AppConfig,
   id: 'configuration',

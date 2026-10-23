@@ -1,6 +1,6 @@
 {
   "name": "doris-app",
-  "version": "1.1.5",
+  "version": "1.1.20",
   "packageManager": "yarn@4.14.1",
   "scripts": {
     "build": "webpack -c ./webpack.config.ts --env production",
@@ -72,7 +72,6 @@
     "@emotion/css": "11.10.6",
     "@emotion/styled": "^11.14.0",
     "@grafana/data": "^10.4.0",
-    "@grafana/i18n": "^0.0.1",
     "@grafana/runtime": "^10.4.0",
     "@grafana/schema": "^11.5.3",
     "@grafana/ui": "^10.4.0",
@@ -95,6 +94,7 @@
     "dayjs": "^1.11.13",
     "echarts": "^5.6.0",
     "echarts-for-react": "^3.0.2",
+    "i18next": "^23.16.8",
     "jotai": "^2.12.5",
     "jotai-location": "^0.6.0",
     "js-tokens": "^9.0.1",
@@ -105,6 +105,7 @@
     "postcss-loader": "^8.1.1",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
+    "react-i18next": "^12.3.1",
     "react-router-dom": "^6.30.1",
     "rxjs": "7.8.1",
     "sqlstring": "^2.3.3",

@@ -9,10 +9,13 @@ export interface QueryTableDataParams {
     endDate: string;
     sort: 'ASC' | 'DESC';
     sortField?: string;
+    sortFieldPath?: string[];
+    sortFieldType?: string;
     timeField: string;
     data_filters: any[];
     interval?: IntervalEnum;
     interval_value?: number;
+    timeZone?: string;
     search_type: string;
     search_value: string;
     indexes?: string;
@@ -20,6 +23,32 @@ export interface QueryTableDataParams {
     page: string;
     page_size: number;
     lucene_where?: string;
+}
+
+export type TopNAggregation = 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX';
+export type TopNConfig = {
+    groupField: string;
+    metric: TopNAggregation;
+    metricField: string;
+    direction: 'DESC' | 'ASC';
+    limit: number;
+};
+export type FieldStatisticsField = {
+    Field: string;
+    Type?: string;
+    variantPath?: string[];
+    variantRootType?: string;
+};
+
+export type FieldStatisticsParams = Pick<QueryTableDataParams, 'catalog' | 'database' | 'table' | 'timeField' | 'startDate' | 'endDate' | 'data_filters' | 'search_type' | 'search_value' | 'indexes_statement' | 'lucene_where'> & {
+    field: FieldStatisticsField;
+};
+export interface TopNQueryParams extends Pick<QueryTableDataParams, 'catalog' | 'database' | 'table' | 'timeField' | 'startDate' | 'endDate' | 'data_filters' | 'search_type' | 'search_value' | 'indexes_statement' | 'lucene_where'> {
+    groupField: string;
+    metric: TopNAggregation;
+    metricField?: string;
+    direction: 'DESC' | 'ASC';
+    limit: number;
 }
 
 
@@ -30,6 +59,7 @@ export interface SurroundingParams {
     cluster: string;
     timeField: string;
     time: string;
+    windowHours?: number;
     data_filters: any;
     pageSize: string;
     operator: '>' | '<';
@@ -39,8 +69,13 @@ export interface SurroundingParams {
 export interface DataFilterType {
     fieldName: string;
     variantKey?: string;
+    variantPath?: string[];
+    /** Physical type of the structured root column, used to query JSON paths. */
+    variantRootType?: string;
+    /** Scalar type inferred for the selected JSON/VARIANT leaf. */
+    fieldType?: string;
     operator: Operator;
-    value: Array<string | number>;
+    value: Array<string | number | boolean>;
     label?: string;
     id: string;
 }
@@ -173,6 +208,7 @@ export type QueryTracesParams = {
 };
 
 export type TracesServicesParams = {
+  database?: string;
   table: string;
   timeField: string;
   startDate: string;
@@ -180,6 +216,7 @@ export type TracesServicesParams = {
 };
 
 export type TracesOperationsParams = {
+  database?: string;
   table: string;
   timeField: string;
   startDate: string;

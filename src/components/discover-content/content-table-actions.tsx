@@ -1,3 +1,4 @@
+import { t } from 'i18n';
 import { IconButton } from '@grafana/ui';
 import { useAtom, useAtomValue } from 'jotai';
 import { nanoid } from 'nanoid';
@@ -19,14 +20,14 @@ export function ContentTableActions({ fieldName, fieldValue }: any) {
                     <>
                         <IconButton
                             name="plus-circle"
-                            tooltip="Equivalent filtration"
+                            tooltip={t('Equivalent filtration')}
                             onClick={() => {
                                 setDataFilter([...dataFilter, { fieldName: fieldName, operator: '=', value: [filterValue], id: nanoid() }]);
                             }}
                         />
                         <IconButton
                             name="minus-circle"
-                            tooltip="Nonequivalent filtration"
+                            tooltip={t('Nonequivalent filtration')}
                             onClick={() => {
                                 setDataFilter([...dataFilter, { fieldName: fieldName, operator: '!=', value: [filterValue], id: nanoid() }]);
                             }}
@@ -35,7 +36,7 @@ export function ContentTableActions({ fieldName, fieldValue }: any) {
                 )}
                 <IconButton
                         name="plus"
-                        tooltip={hasField ? 'Delete From Table' : 'Add To Table'}
+                        tooltip={hasField ? t('Delete From Table') : t('Add To Table')}
                         onClick={() => {
                             const field = tableFields.find(field => field.Field === fieldName);
                             if (hasField) {

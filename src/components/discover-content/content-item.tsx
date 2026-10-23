@@ -1,3 +1,4 @@
+import { t } from 'i18n';
 import { useAtom } from 'jotai';
 import { css } from '@emotion/css';
 import { nanoid } from 'nanoid';
@@ -28,7 +29,7 @@ export function ContentItem({ fieldName, fieldValue, fieldType }: ContentItemPro
                             setDataFilter([...dataFilter, { fieldName, operator: '=', value: [fieldValue], id: nanoid() }]);
                             e.stopPropagation();
                         }}
-                        tooltip="Equivalent filtration"
+                        tooltip={t('Equivalent filtration')}
                     />
                     <IconButton
                         name="minus-circle"
@@ -45,7 +46,7 @@ export function ContentItem({ fieldName, fieldValue, fieldType }: ContentItemPro
                             ]);
                             e.stopPropagation();
                         }}
-                        tooltip="Nonequivalent filtration"
+                        tooltip={t('Nonequivalent filtration')}
                     />
                 </div>
             )}

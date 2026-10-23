@@ -1,20 +1,24 @@
+import { getFilterDisplayLabel } from 'components/discover-header/application-filter';
+import { t } from 'i18n';
 import React, { useRef, useState } from 'react';
 import { DiscoverFilterWrapper } from './discover-filter.style';
-import { useTranslation } from 'react-i18next';
-import { useAtom } from 'jotai';
+import { useAtom, useAtomValue } from 'jotai';
 import { FilterContent } from './filter-content';
-import { dataFilterAtom, locationAtom } from 'store/discover';
+import { dataFilterAtom, locationAtom, tableFieldsAtom, variantFieldsAtom } from 'store/discover';
 import { getFilterSQL } from 'utils/data';
+import { enrichStructuredFilterTypes } from 'utils/sql-filter';
+import { flattenVariantLeaves } from 'utils/variant-fields';
 import { css } from '@emotion/css';
 import { Badge, Icon, IconButton, Toggletip, useTheme2 } from '@grafana/ui';
 // import { set } from 'lodash-es';
 
 export default function DiscoverFilter() {
     const [dataFilter, setDataFilter] = useAtom(dataFilterAtom);
+    const tableFields = useAtomValue(tableFieldsAtom);
+    const variantFields = useAtomValue(variantFieldsAtom);
     const [open, setOpen] = useState<boolean>(false);
     const [dataFilterOpen, setDataFilterOpen] = useState<any>({});
     const discoverFilterRef = useRef(null);
-    const { t } = useTranslation();
     const [_loc, setLoc] = useAtom(locationAtom);
     const theme = useTheme2();
 
@@ -30,9 +34,13 @@ export default function DiscoverFilter() {
                 border-radius: 0 0 0.25rem 0.25rem;
             `}
         >
-            <div className="text-xs font-medium">{t`Filter`}</div>
+            <div className="text-xs font-medium">{t('Filter')}</div>
             <div className="filter-tag">
                 {dataFilter.map((dataFilterValue, index) => {
+                    const displayFilter = enrichStructuredFilterTypes(
+                        [dataFilterValue],
+                        [...tableFields, ...flattenVariantLeaves(variantFields)],
+                    )[0];
                     return (
                         <div
                             key={index.toString()}
@@ -80,7 +88,7 @@ export default function DiscoverFilter() {
                                                     justify-content: space-between;
                                                 `}
                                             >
-                                                <span>{dataFilterValue.label ? <span>{dataFilterValue.label}</span> : <span>{getFilterSQL(dataFilterValue)}</span>}</span>
+                                                <span>{dataFilterValue.label ? <span>{getFilterDisplayLabel(dataFilterValue)}</span> : <span>{getFilterSQL(displayFilter)}</span>}</span>
                                                 <div
                                                     className={css`
                                                         margin-left: 0.5rem;
@@ -125,7 +133,7 @@ export default function DiscoverFilter() {
                     }
                     placement="bottom"
                 >
-                    <IconButton name="plus" tooltip="Add filter" style={{marginLeft: 10}} />
+                    <IconButton name="plus" tooltip={t('Add filter')} style={{marginLeft: 10}} />
                 </Toggletip>
             </div>
         </DiscoverFilterWrapper>

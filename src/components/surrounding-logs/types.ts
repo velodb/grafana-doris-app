@@ -1,14 +1,3 @@
-import { DataFilterType } from "types/type";
-
-export interface DiscoverFilterProps {
-    dataFilter: DataFilterType[];
-}
-
-export interface FilterContentProps {
-    onHide: () => void;
-    dataFilterValue?: DataFilterType;
-}
-
 export interface SurroundingParams {
     catalog: string;
     database: string;

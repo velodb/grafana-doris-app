@@ -3,7 +3,7 @@
   "type": "app",
   "name": "Doris App",
   "id": "velodb-doris-app",
-  "backend": false,
+  "backend": true,
   "info": {
     "keywords": [
       "app"
@@ -59,5 +59,6 @@
   "dependencies": {
     "grafanaDependency": ">=10.4.0",
     "plugins": []
-  }
+  },
+  "executable": "velodb-doris-app"
 }

@@ -3,9 +3,17 @@ services:
     extends:
       file: .config/docker-compose-base.yaml
       service: grafana
+    environment:
+      GF_PLUGINS_FORWARD_HOST_ENV_VARS: velodb-doris-app
+      DORIS_APP_STORAGE_PATH: /var/lib/grafana/doris-app/saved-queries.db
+    volumes:
+      - doris-app-saved-queries:/var/lib/grafana/doris-app
     networks:
       - doris-opentelemetry-demo
 
 networks:
   doris-opentelemetry-demo:
     external: true
+
+volumes:
+  doris-app-saved-queries:

@@ -1,3 +1,4 @@
+import { t } from 'i18n';
 import { DataFilterType } from 'types/type';
 
 export const APPLICATION_FILTER_ID = 'application-filter';
@@ -52,4 +53,12 @@ export function applyApplicationFilter(
             },
         ],
     };
+}
+
+/** Translate only the generated application label; preserve custom and persisted labels. */
+export function getFilterDisplayLabel(filter: DataFilterType): string | undefined {
+    if (filter.id === APPLICATION_FILTER_ID && filter.label === `Application: ${filter.value[0]}`) {
+        return t('Application: {{application}}', { application: filter.value[0] });
+    }
+    return filter.label;
 }

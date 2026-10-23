@@ -1,0 +1,18 @@
+{
+    "name": "Doris exists syntax",
+    "lucene": "_exists_:span_attributes.http.method",
+    "expectedWhere": "`span_attributes`['http']['method'] IS NOT NULL",
+    "databaseName": "otel",
+    "tableName": "traces",
+    "columnMeta": {
+        "columns": [
+            {
+                "name": "span_attributes",
+                "type": "VARIANT"
+            }
+        ],
+        "invertedIndexColumns": [
+            "span_attributes"
+        ]
+    }
+}

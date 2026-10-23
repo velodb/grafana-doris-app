@@ -1,4 +1,4 @@
-import { useTranslation } from 'react-i18next';
+import { t } from 'i18n';
 import { useAtom } from 'jotai';
 import React from 'react';
 import { searchableAtom, aggregatableAtom, fieldTypeAtom } from 'store/discover';
@@ -7,7 +7,6 @@ import { Select, RadioButtonGroup } from '@grafana/ui';
 import { css } from '@emotion/css';
 
 export function FilterContent() {
-  const { t } = useTranslation();
   const [searchable, setSearchable] = useAtom(searchableAtom);
   const [aggregatable, setAggregatable] = useAtom(aggregatableAtom);
   const [fieldType, setFieldType] = useAtom(fieldTypeAtom);
@@ -21,7 +20,8 @@ export function FilterContent() {
       <div className={css`
         font-size: 1.125rem;
         font-weight: 500;
-        `}>{`Field Filter`}</div>
+        `}>{t('Field Filter')}
+      </div>
       <div className={css`
           margin-top: 1rem;
           border: none;
@@ -29,7 +29,8 @@ export function FilterContent() {
         <div className={css`
           font-size: 0.875rem;
           margin-bottom: 0.5rem;
-          `} >{t`Aggregatable`}</div>
+          `} >{t('Aggregatable')}
+        </div>
         <div>
           <RadioButtonGroup
             //   name="aggregatable"
@@ -48,7 +49,8 @@ export function FilterContent() {
         <div className={css`
           font-size: 0.875rem;
           margin-bottom: 0.5rem;
-          `} >{t`Searchable`}</div>
+          `} >{t('Searchable')}
+        </div>
         <div>
           <RadioButtonGroup
             //   name="searchable"
@@ -67,8 +69,9 @@ export function FilterContent() {
         <div className={css`
           font-size: 0.875rem;
           margin-bottom: 0.5rem;
-          `} >{t`Type`}</div>
-        <Select
+          `} >{t('Type')}
+        </div>
+        <Select placeholder={t('Choose')}
           value={fieldType as any}
           onChange={(value) => {
             setFieldType(value as any);
@@ -76,23 +79,23 @@ export function FilterContent() {
           options={[
             {
               value: 'ANY',
-              label: 'Any',
+              label: t('Any'),
             },
             {
               value: 'STRING',
-              label: 'String',
+              label: t('String'),
             },
             {
               value: 'NUMBER',
-              label: 'Number',
+              label: t('Number'),
             },
             {
               value: 'DATE',
-              label: 'Date',
+              label: t('Date'),
             },
             {
               value: 'VARIANT',
-              label: 'Variant',
+              label: t('Variant'),
             },
           ]}
         />

@@ -56,15 +56,15 @@ describe('Components/AppConfig', () => {
     expect(screen.queryByRole('button', { name: /save api settings/i })).toBeInTheDocument();
   });
 
-  test('renders and validates the application resource attribute key', () => {
+  test('allows clearing the application resource attribute key', () => {
     render(<AppConfig plugin={props.plugin} query={props.query} />);
 
     const input = screen.getByTestId(testIds.appConfig.applicationAttributeKey);
     expect(input).toHaveValue('app');
 
     fireEvent.change(input, { target: { value: '   ' } });
-    expect(screen.getByRole('button', { name: /save plugin settings/i })).toBeDisabled();
-    expect(screen.getByText(/application resource attribute key is required/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /save plugin settings/i })).toBeEnabled();
+    expect(screen.queryByText(/application resource attribute key is required/i)).not.toBeInTheDocument();
   });
 
   test('normalizes a configured application resource attribute key', () => {
@@ -84,4 +84,16 @@ describe('Components/AppConfig', () => {
 
     expect(screen.getByTestId(testIds.appConfig.applicationAttributeKey)).toHaveValue('k8s.pod.label.app');
   });
+});
+
+it('renders application configuration in Chinese when the plugin language is Chinese', async () => {
+  const { pluginI18n } = await import('i18n');
+  await pluginI18n.changeLanguage('zh-CN');
+  try {
+    render(<AppConfig plugin={{ meta: { id: 'velodb-doris-app', enabled: true, jsonData: {} } } as any} query={{}} />);
+    expect(screen.getByRole('button', { name: '保存插件设置' })).toBeInTheDocument();
+    expect(screen.getByText('默认数据源')).toBeInTheDocument();
+  } finally {
+    await pluginI18n.changeLanguage('en-US');
+  }
 });

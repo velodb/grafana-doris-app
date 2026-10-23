@@ -49,3 +49,10 @@ ci/
 
 # MacOS
 .DS_Store
+
+# Local Keyrock development credentials
+/test-env/keyrock.env
+/test-env/keyrock-config.js
+/test-env/keycloak.env
+/vendor/
+/test-env/doris-sso-signing-key.pem

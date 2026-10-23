@@ -1,3 +1,4 @@
+import { t } from 'i18n';
 import React, { Fragment, useEffect, useMemo, useState } from 'react';
 import {
     ColumnDef,
@@ -44,6 +45,9 @@ interface SDCollapsibleTableProps<TData> {
     onSortingChange?: OnChangeFn<SortingState>;
     enableColumnReordering?: boolean;
     emptyContent?: React.ReactNode;
+    /** Extra top/bottom padding for each data row. */
+    rowVerticalPadding?: number;
+    stickyHeader?: boolean;
 }
 
 type SortableHeaderProps<TData> = {
@@ -52,6 +56,7 @@ type SortableHeaderProps<TData> = {
     renderExpandAllToggle: boolean;
     isAllRowsExpanded: boolean;
     onToggleAll: () => void;
+    stickyHeader: boolean;
 };
 
 function SortableHeader<TData>({
@@ -60,6 +65,7 @@ function SortableHeader<TData>({
     renderExpandAllToggle,
     isAllRowsExpanded,
     onToggleAll,
+    stickyHeader,
 }: SortableHeaderProps<TData>) {
     const theme = useTheme2();
     const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
@@ -83,8 +89,8 @@ function SortableHeader<TData>({
                 opacity: isDragging ? 0.7 : 1,
             }}
             className={css`
-                position: sticky;
-                top: 0;
+                position: ${stickyHeader ? 'sticky' : 'relative'};
+                ${stickyHeader ? 'top: 0;' : ''}
                 z-index: ${isDragging ? 4 : 2};
                 height: 48px;
                 white-space: nowrap;
@@ -113,15 +119,15 @@ function SortableHeader<TData>({
                 {renderExpandAllToggle ? (
                     <IconButton
                         name={isAllRowsExpanded ? 'arrow-down' : 'arrow-right'}
-                        tooltip={isAllRowsExpanded ? 'Collapse all' : 'Expand all'}
+                        tooltip={isAllRowsExpanded ? t('Collapse all') : t('Expand all')}
                         onClick={onToggleAll}
                     />
                 ) : null}
                 {canReorder ? (
                     <button
                         type="button"
-                        aria-label={`Move column ${header.column.id}`}
-                        title="Drag to reorder column"
+                        aria-label={t('Move column {{column}}', { column: header.column.id })}
+                        title={t('Drag to reorder column')}
                         {...attributes}
                         {...listeners}
                         className={css`
@@ -192,8 +198,9 @@ function SortableHeader<TData>({
                 {header.column.getCanResize() ? (
                     <div
                         role="separator"
-                        aria-label={`Resize column ${header.column.id}`}
+                        aria-label={t('Resize column {{column}}', { column: header.column.id })}
                         aria-orientation="vertical"
+                        title={t('Drag to resize column; double-click to reset')}
                         onDoubleClick={() => header.column.resetSize()}
                         onMouseDown={header.getResizeHandler()}
                         onTouchStart={header.getResizeHandler()}
@@ -201,22 +208,23 @@ function SortableHeader<TData>({
                             css`
                                 position: absolute;
                                 top: 0;
-                                right: -4px;
+                                right: 0;
                                 z-index: 5;
-                                width: 8px;
+                                width: 10px;
                                 height: 100%;
                                 cursor: col-resize;
                                 touch-action: none;
+                                user-select: none;
 
                                 &::after {
                                     content: '';
                                     position: absolute;
-                                    top: 25%;
-                                    left: 3px;
+                                    top: 15%;
+                                    right: 1px;
                                     width: 2px;
-                                    height: 50%;
+                                    height: 70%;
                                     border-radius: 1px;
-                                    background: ${theme.colors.border.medium};
+                                    background: ${theme.colors.text.secondary};
                                 }
 
                                 &:hover::after {
@@ -256,6 +264,8 @@ export default function SDCollapsibleTable<T>(props: SDCollapsibleTableProps<T>)
         onSortingChange,
         enableColumnReordering = false,
         emptyContent,
+        rowVerticalPadding = 0,
+        stickyHeader = true,
     } = props;
     const theme = useTheme2();
     const [expanded, setExpanded] = useState<ExpandedState>(allRowsExpanded ? true : {});
@@ -343,6 +353,7 @@ export default function SDCollapsibleTable<T>(props: SDCollapsibleTableProps<T>)
                                             canReorder={enableColumnReordering && header.column.id !== '__expand'}
                                             renderExpandAllToggle={renderExpandAllToggle}
                                             isAllRowsExpanded={isAllRowsExpanded}
+                                            stickyHeader={stickyHeader}
                                             onToggleAll={() => {
                                                 const nextExpanded = !isAllRowsExpanded;
                                                 table.toggleAllRowsExpanded(nextExpanded);
@@ -380,7 +391,7 @@ export default function SDCollapsibleTable<T>(props: SDCollapsibleTableProps<T>)
                                             style={{ width: cell.column.getSize() }}
                                             className={css`
                                                 height: 48px;
-                                                padding: 0 16px;
+                                                padding: ${rowVerticalPadding}px 16px;
                                                 overflow: hidden;
                                                 font-size: 14px;
                                             `}
@@ -416,7 +427,7 @@ export default function SDCollapsibleTable<T>(props: SDCollapsibleTableProps<T>)
                     ) : (
                         <tr>
                             <td colSpan={Math.max(table.getVisibleLeafColumns().length, 1)}>
-                                {emptyContent || <EmptySearchResult>No Data</EmptySearchResult>}
+                                {emptyContent || <EmptySearchResult>{t('No Data')}</EmptySearchResult>}
                             </td>
                         </tr>
                     )}

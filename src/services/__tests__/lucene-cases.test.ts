@@ -1,14 +1,20 @@
 import { readdirSync, readFileSync } from 'fs';
 import * as path from 'path';
 import { getWhereSQLViaLucene } from 'services/lucene';
-import { getColumn, getInvertedIndexColumns } from 'services/metaservice';
+import { getColumn, getInvertedIndexColumns, supportsJsonSearch, supportsSearch, supportsTryCast } from 'services/metaservice';
 
 jest.mock('services/metaservice', () => ({
     getColumn: jest.fn(),
+    supportsJsonSearch: jest.fn(),
+    supportsSearch: jest.fn(),
+    supportsTryCast: jest.fn(),
     getInvertedIndexColumns: jest.fn(),
 }));
 
 const mockedGetColumn = getColumn as jest.MockedFunction<typeof getColumn>;
+const mockedSupportsTryCast = supportsTryCast as jest.MockedFunction<typeof supportsTryCast>;
+const mockedSupportsJsonSearch = supportsJsonSearch as jest.MockedFunction<typeof supportsJsonSearch>;
+const mockedSupportsSearch = supportsSearch as jest.MockedFunction<typeof supportsSearch>;
 const mockedGetInvertedIndexColumns = getInvertedIndexColumns as jest.MockedFunction<typeof getInvertedIndexColumns>;
 
 type ColumnFixture = {
@@ -31,6 +37,8 @@ type LuceneCase = {
     tableReference?: string;
     columns?: Record<string, ColumnFixture>;
     invertedIndexColumns?: string[];
+    variantImplicitPaths?: Record<string, string[][]>;
+    columnMeta?: { columns: Array<{ name: string; type: string }>; invertedIndexColumns: string[] };
 };
 
 function loadCaseFixtures(): Array<LuceneCase & { fileName: string }> {
@@ -60,6 +68,12 @@ function loadCaseFixtures(): Array<LuceneCase & { fileName: string }> {
 const luceneCases = loadCaseFixtures();
 
 describe('Lucene case fixtures', () => {
+    beforeEach(() => {
+        mockedSupportsTryCast.mockResolvedValue(true);
+        mockedSupportsJsonSearch.mockResolvedValue(true);
+        mockedSupportsSearch.mockResolvedValue(false);
+    });
+
     if (luceneCases.length === 0) {
         it('has at least one lucene case fixture defined', () => {
             throw new Error('No lucene case fixtures found under src/services/__tests__/cases');
@@ -69,6 +83,9 @@ describe('Lucene case fixtures', () => {
 
     afterEach(() => {
         mockedGetColumn.mockReset();
+        mockedSupportsTryCast.mockReset();
+        mockedSupportsJsonSearch.mockReset();
+        mockedSupportsSearch.mockReset();
         mockedGetInvertedIndexColumns.mockReset();
     });
 
@@ -87,6 +104,8 @@ describe('Lucene case fixtures', () => {
                 tableReference,
                 columns = {},
                 invertedIndexColumns = [],
+                variantImplicitPaths,
+                columnMeta,
             } = testCase;
 
             const metadataLookup = Object.entries(columns).reduce<Record<string, ColumnFixture>>((acc, [key, value]) => {
@@ -109,6 +128,8 @@ describe('Lucene case fixtures', () => {
                 connectionId,
                 implicitColumnExpression,
                 datasourceType,
+                variantImplicitPaths,
+                columnMeta,
             });
 
             if (!expectedWhere && !expectedSql) {
@@ -127,4 +148,23 @@ describe('Lucene case fixtures', () => {
             }
         },
     );
+
+    it('uses supplied column and inverted-index metadata without metadata requests', async () => {
+        mockedGetColumn.mockReset();
+        mockedGetInvertedIndexColumns.mockReset();
+
+        await getWhereSQLViaLucene({
+            query: 'attrs.http.method:GET',
+            databaseName: 'logs',
+            tableName: 'otel_traces',
+            connectionId: 'test-connection',
+            columnMeta: {
+                columns: [{ name: 'attrs', type: 'VARIANT' }],
+                invertedIndexColumns: ['attrs'],
+            },
+        });
+
+        expect(mockedGetColumn).not.toHaveBeenCalled();
+        expect(mockedGetInvertedIndexColumns).not.toHaveBeenCalled();
+    });
 });

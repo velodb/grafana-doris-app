@@ -1,0 +1,92 @@
+diff --git a/dsn.go b/dsn.go
+--- a/dsn.go
++++ b/dsn.go
+@@ -54,6 +54,10 @@ type Config struct {
+ 	ReadTimeout          time.Duration     // I/O read timeout
+ 	WriteTimeout         time.Duration     // I/O write timeout
+ 	Logger               Logger            // Logger
++	// OIDCTokenProvider supplies a short-lived JWT for the
++	// authentication_openid_connect_client plugin. It is separate from Passwd
++	// so an OIDC connection can never use a password authentication path.
++	OIDCTokenProvider func() (string, error)
+ 	// DialFunc specifies the dial function for creating connections
+ 	DialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
+ 
+@@ -71,6 +75,7 @@ type Config struct {
+ 	MultiStatements          bool // Allow multiple statements in one query
+ 	ParseTime                bool // Parse time values to time.Time
+ 	RejectReadOnly           bool // Reject read-only connections
++	OIDCEnabled              bool // Require authentication_openid_connect_client; never fall back
+ 
+ 	// unexported fields. new options should be come here.
+ 	// boolean first. alphabetical order.
+diff --git a/auth.go b/auth.go
+--- a/auth.go
++++ b/auth.go
+@@ -276,4 +276,30 @@ func (mc *mysqlConn) auth(authData []byte, plugin string) ([]byte, error) {
+ 	switch plugin {
++	case "authentication_openid_connect_client":
++		// MySQL's OIDC client plugin sends a capability byte followed by a
++		// length-encoded JWT. Keep this implementation intentionally strict:
++		// a token must never cross an unencrypted TCP connection and must not
++		// silently fall back to a password authentication plugin.
++		if mc.cfg.TLS == nil && mc.cfg.Net != "unix" {
++			return nil, fmt.Errorf("authentication_openid_connect_client requires TLS")
++		}
++		if !mc.cfg.OIDCEnabled || mc.cfg.OIDCTokenProvider == nil {
++			return nil, fmt.Errorf("OpenID Connect token provider is not configured")
++		}
++		token, err := mc.cfg.OIDCTokenProvider()
++		if err != nil {
++			return nil, fmt.Errorf("get OpenID Connect identity token: %w", err)
++		}
++		if len(token) == 0 || len(token) > 10_000 {
++			return nil, fmt.Errorf("invalid OpenID Connect identity token")
++		}
++		// Doris accepts this payload in its initial handshake while Oracle
++		// MySQL can request the same payload through AuthSwitchRequest. The
++		// caller invokes auth for both states, so JWT delivery is identical.
++		response := []byte{1}
++		response = appendLengthEncodedInteger(response, uint64(len(token)))
++		response = append(response, []byte(token)...)
++		return response, nil
++
+ 	case "caching_sha2_password":
+ 		authResp := scrambleSHA256Password(authData, mc.cfg.Passwd)
+ 		return authResp, nil
+diff --git a/connector.go b/connector.go
+--- a/connector.go
++++ b/connector.go
+@@ -140,10 +140,17 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
+ 	if plugin == "" {
+ 		plugin = defaultAuthPlugin
+ 	}
++	if c.cfg.OIDCEnabled {
++		plugin = "authentication_openid_connect_client"
++	}
+ 
+ 	// Send Client Authentication Packet
+ 	authResp, err := mc.auth(authData, plugin)
+ 	if err != nil {
++		if plugin == "authentication_openid_connect_client" {
++			mc.cleanup()
++			return nil, err
++		}
+ 		// try the default auth plugin, if using the requested plugin failed
+ 		c.cfg.Logger.Print("could not use requested auth plugin '"+plugin+"': ", err.Error())
+ 		plugin = defaultAuthPlugin
+diff --git a/packets.go b/packets.go
+--- a/packets.go
++++ b/packets.go
+@@ -310,7 +310,10 @@ func (mc *mysqlConn) writeHandshakeResponsePacket(authResp []byte, plugin strin
+ 		clientFlags |= clientPluginAuthLenEncClientData
+ 	}
+ 
+-	pktLen := 4 + 4 + 1 + 23 + len(mc.cfg.User) + 1 + len(authRespLEI) + len(authResp) + 21 + 1
++	// The upstream driver reserves space for caching_sha2_password (21 bytes).
++	// OIDC's plugin name is longer, so size this field from the negotiated
++	// plugin name or the following connection attributes are overwritten.
++	pktLen := 4 + 4 + 1 + 23 + len(mc.cfg.User) + 1 + len(authRespLEI) + len(authResp) + len(plugin) + 1
+ 
+ 	// To specify a db name
+ 	if n := len(mc.cfg.DBName); n > 0 {

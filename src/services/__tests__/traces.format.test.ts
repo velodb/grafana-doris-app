@@ -98,3 +98,21 @@ describe('formatTracesResData', () => {
         ]);
     });
 });
+
+describe('Trace attributes', () => {
+    it('flattens nested attributes and serializes scalar and array values', () => {
+        const frame = {
+            schema: { fields: [{ name: 'tags', type: FieldType.string }] },
+            data: { values: [[JSON.stringify({ http: { method: 'GET', status: 200 }, ok: true, list: ['x'], missing: null })]] },
+        };
+        expect(formatTracesResData(frame).fields[0].values[0]).toEqual([
+            { key: 'http.method', value: 'GET' }, { key: 'http.status', value: '200' },
+            { key: 'ok', value: 'true' }, { key: 'list', value: '["x"]' }, { key: 'missing', value: 'null' },
+        ]);
+    });
+    it('preserves old key/value arrays and handles malformed values', () => {
+        const tags = [{ key: 'http.method', value: 'GET' }];
+        const frame = { schema: { fields: [{ name: 'serviceTags', type: FieldType.string }] }, data: { values: [[JSON.stringify(tags), 'invalid', null]] } };
+        expect(formatTracesResData(frame).fields[0].values).toEqual([tags, [], []]);
+    });
+});

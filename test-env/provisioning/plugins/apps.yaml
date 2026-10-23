@@ -8,11 +8,10 @@ apps:
     jsonData:
       apiUrl: http://localhost
       logsConfig:
-        datasource: doris-test
+        datasource: velodb-doris-sso
         database: otel
         logsTable: otel_logs
         targetTraceTable: otel_logs
         applicationAttributeKey: app
     secureJsonData:
       apiKey: test-only
-

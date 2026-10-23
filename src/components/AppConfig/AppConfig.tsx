@@ -1,11 +1,12 @@
+import { t } from 'i18n';
 import React, { ChangeEvent, useState, useEffect } from 'react';
-import { lastValueFrom, Subscription } from 'rxjs';
+import { lastValueFrom } from 'rxjs';
 import { css } from '@emotion/css';
-import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps, PluginMeta, SelectableValue, toDataFrame } from '@grafana/data';
+import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps, PluginMeta, SelectableValue } from '@grafana/data';
 import { getBackendSrv, DataSourcePicker, getDataSourceSrv, logError } from '@grafana/runtime';
 import { Button, Field, FieldSet, Input, SecretInput, useStyles2, Select, MultiSelect } from '@grafana/ui';
 import { useAtom } from 'jotai';
-import { getDatabases, getTablesService } from 'services/metaservice';
+import { useDatabaseTableSelection } from 'hooks/useDatabaseTableSelection';
 import { testIds } from '../testIds';
 import { settingDatabasesAtom, settingTablesAtom } from 'store/discover';
 import {
@@ -16,7 +17,7 @@ import {
   type TeamDatasourcePermission,
 } from 'types/plugin-settings';
 import { toError } from 'utils/errors';
-import { fetchTeams, getMysqlDatasources, GrafanaTeam } from 'services/grafana-permissions';
+import { SUPPORTED_DATASOURCE_TYPES, fetchTeams, getMysqlDatasources, GrafanaTeam, isSupportedDatasourceType } from 'services/grafana-permissions';
 
 export type { AppPluginSettings, LogsConfig };
 export { DEFAULT_LOGS_CONFIG, mergeLogsConfig };
@@ -61,7 +62,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
         .getList()
         .find(item => item.uid === ds || item.name === ds);
     }
-    return ds;
+    return getDataSourceSrv().getList().find(item => item.uid === ds.uid) ?? ds;
   }, []);
   const datasourceOptions = React.useMemo<Array<SelectableValue<string>>>(() => {
     try {
@@ -110,50 +111,18 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
     setTeamDatasourcePermissions(current => current.filter((_, permissionIndex) => permissionIndex !== index));
   }, []);
 
-  const fetchDatabases = React.useCallback((ds: any) => {
-    const datasourceRef = resolveDatasource(ds);
-    if (!datasourceRef) {
-      return undefined;
-    }
-
-    return getDatabases(datasourceRef).subscribe({
-      next: (resp: any) => {
-        const { data, ok } = resp;
-        if (ok) {
-          const frame = toDataFrame(data.results.getDatabases.frames[0]);
-          const values = Array.from(frame.fields[0].values);
-          const options = values.map((item: string) => ({ label: item, value: item }));
-          setDatabases(options);
-        }
-      },
-      error: (err: any) => logError(toError(err), { source: 'AppConfig', action: 'fetchDatabases' }),
-    });
-  }, [setDatabases, resolveDatasource]);
-
-  const fetchTables = React.useCallback((db: string) => {
-    const datasourceRef = resolveDatasource(currentLogsConfig.datasource);
-    if (!db) {
-      return undefined;
-    }
-    if (!datasourceRef) {
-      return undefined;
-    }
-    return getTablesService({
-      selectdbDS: datasourceRef,
-      database: db,
-    }).subscribe({
-      next: (resp: any) => {
-        const { data, ok } = resp;
-        if (ok) {
-          const frame = toDataFrame(data.results.getTables.frames[0]);
-          const values = Array.from(frame.fields[0].values);
-          const options = values.map((item: string) => ({ label: item, value: item }));
-          setTables(options);
-        }
-      },
-      error: (err: any) => logError(toError(err), { source: 'AppConfig', action: 'fetchTables' }),
-    });
-  }, [setTables, currentLogsConfig.datasource, resolveDatasource])
+  const initialLogsConfig = React.useRef({ ...logsConfig, database: jsonData?.logsConfig?.database });
+  const preferredTraceTable = React.useRef(logsConfig.targetTraceTable);
+  const { selectDatasource, selectDatabase, databasesLoading, tablesLoading } = useDatabaseTableSelection({
+    setDatabases,
+    setTables: options => {
+      setTables(options);
+      const targetTraceTable = options.find(option => option.value === preferredTraceTable.current)?.value || options[0]?.value || '';
+      setCurrentLogsConfig(prev => ({ ...prev, targetTraceTable }));
+    },
+    onDatabaseChange: database => setCurrentLogsConfig(prev => ({ ...prev, database, logsTable: '', targetTraceTable: '' })),
+    onTableChange: (_datasource, _database, logsTable) => setCurrentLogsConfig(prev => ({ ...prev, logsTable })),
+  });
 
   const onResetApiKey = () =>
     setState({
@@ -192,9 +161,6 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
   };
 
   const submitLogConfig = () => {
-    if (!applicationAttributeKey) {
-      return;
-    }
     updatePluginAndReload(plugin.meta.id, {
       enabled,
       pinned,
@@ -224,39 +190,17 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
   }, []);
 
   useEffect(() => {
-    const datasourceRef = resolveDatasource(currentLogsConfig.datasource);
-    if (datasourceRef && datasourceRef !== currentLogsConfig.datasource) {
-      setCurrentLogsConfig(prev => ({
-        ...prev,
-        datasource: datasourceRef,
-      }));
-    }
-  }, [currentLogsConfig.datasource, resolveDatasource]);
-
-  useEffect(() => {
-    if (!currentLogsConfig.datasource) {
-      return;
-    }
-
-    const subscription: Subscription | undefined = fetchDatabases(currentLogsConfig.datasource);
-
-    return () => subscription?.unsubscribe();
-  }, [currentLogsConfig.datasource, fetchDatabases]);
-
-  useEffect(() => {
-    if (!currentLogsConfig.database) {
-      return;
-    }
-    const subscription: Subscription | undefined = fetchTables(currentLogsConfig.database);
-
-    return () => subscription?.unsubscribe(); 
-  }, [currentLogsConfig.database, fetchTables])
+    const initial = initialLogsConfig.current;
+    const datasource = resolveDatasource(initial.datasource);
+    setCurrentLogsConfig(prev => ({ ...prev, datasource: datasource || '' }));
+    selectDatasource(datasource, { database: initial.database, table: initial.logsTable });
+  }, [resolveDatasource, selectDatasource]);
 
   return (
     <>
       <form onSubmit={onSubmit}>
-        <FieldSet label="API Settings">
-          <Field label="API Key" description="A secret key for authenticating to our custom API">
+        <FieldSet label={t('API Settings')}>
+          <Field label={t('API Key')} description={t('A secret key for authenticating to our custom API')}>
             <SecretInput
               width={60}
               id="config-api-key"
@@ -264,62 +208,66 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
               name="apiKey"
               value={state.apiKey}
               isConfigured={state.isApiKeySet}
-              placeholder={'Your secret API key'}
+              placeholder={t('Your secret API key')}
               onChange={onChange}
               onReset={onResetApiKey}
             />
           </Field>
 
-          <Field label="API Url" description="" className={s.marginTop}>
+          <Field label={t('API Url')} description="" className={s.marginTop}>
             <Input
               width={60}
               name="apiUrl"
               id="config-api-url"
               data-testid={testIds.appConfig.apiUrl}
               value={state.apiUrl}
-              placeholder={`E.g.: http://mywebsite.com/api/v1`}
+              placeholder={t('E.g.: http://mywebsite.com/api/v1')}
               onChange={onChange}
             />
           </Field>
 
           <div className={s.marginTop}>
             <Button type="submit" data-testid={testIds.appConfig.submit} disabled={isSubmitDisabled}>
-              Save API settings
+              {t('Save API settings')}
             </Button>
           </div>
         </FieldSet>
       </form>
       <form className={s.marginTop} onSubmit={submitLogConfig}>
         <FieldSet>
-          <Field label="Default Datasource">
+          <Field label={t('Default Datasource')}>
             <DataSourcePicker
               width={20}
-              type={'mysql'}
+              type={SUPPORTED_DATASOURCE_TYPES}
               current={currentLogsConfig.datasource}
-              placeholder="Choose"
+              placeholder={t('Choose')}
               noDefault
-              filter={ds => ds.type === 'mysql'}
+              filter={ds => isSupportedDatasourceType(ds.type)}
               onChange={item => {
-                setCurrentLogsConfig({ ...currentLogsConfig, datasource: item });
-                // Always fetch databases even if the same datasource is selected
-                fetchDatabases(item);
+                preferredTraceTable.current = '';
+                setCurrentLogsConfig(prev => ({ ...prev, datasource: item }));
+                selectDatasource(item);
               }}
             />
           </Field>
-          <Field label="Default Database">
-            <Select
+          <Field label={t('Default Database')}>
+            <Select placeholder={t('Choose')}
               width={60}
               options={databases}
               value={currentLogsConfig.database}
+              disabled={databasesLoading || !currentLogsConfig.datasource || databases.length === 0}
+              isLoading={databasesLoading}
               onChange={(selectedDatabase: any) => {
-                setCurrentLogsConfig({ ...currentLogsConfig, database: selectedDatabase.value })
-                fetchTables(selectedDatabase.value)
+                preferredTraceTable.current = '';
+                selectDatabase(resolveDatasource(currentLogsConfig.datasource), selectedDatabase.value);
               }}
             ></Select>
           </Field>
-          <Field label="Default Logs Table">
-            <Select
+          <Field label={t('Default Logs Table')}>
+            <Select placeholder={t('Choose')}
               options={tables}
+              disabled={databasesLoading || tablesLoading || !currentLogsConfig.database || tables.length === 0}
+              isLoading={tablesLoading}
               width={60}
               value={currentLogsConfig.logsTable}
               onChange={(selectedTable: any) => {
@@ -330,9 +278,11 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
               }}
             />
           </Field>
-          <Field label="Default Trace Table">
-            <Select
+          <Field label={t('Default Trace Table')}>
+            <Select placeholder={t('Choose')}
               options={tables}
+              disabled={databasesLoading || tablesLoading || !currentLogsConfig.database || tables.length === 0}
+              isLoading={tablesLoading}
               width={60}
               value={currentLogsConfig.targetTraceTable}
               onChange={(selectedTable: any) => {
@@ -344,10 +294,8 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
             />
           </Field>
           <Field
-            label="Application resource attribute key"
-            description="Resource attribute used by the Discover Application filter, for example app or k8s.pod.label.app."
-            invalid={!applicationAttributeKey}
-            error={!applicationAttributeKey ? 'Application resource attribute key is required' : undefined}
+            label={t('Application resource attribute key')}
+            description={t('Optional. Resource attribute used by the Discover Application filter, for example app or k8s.pod.label.app. Leave empty to disable the filter.')}
           >
             <Input
               width={60}
@@ -362,7 +310,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
               }}
             />
           </Field>
-          <Field label="Team Datasource Permissions" description="Users with no teams can view all MySQL datasources. Users in teams can only view datasources configured here.">
+          <Field label={t('Team Datasource Permissions')} description={t('Users with no teams can view all MySQL datasources. Users in teams can only view datasources configured here.')}>
             <div>
               {teamDatasourcePermissions.map((permission, index) => {
                 const selectedDatasourceOptions = datasourceOptions.filter(option =>
@@ -375,7 +323,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
                       width={30}
                       options={teamOptions}
                       value={permission.teamId || undefined}
-                      placeholder="Choose team"
+                      placeholder={t('Choose team')}
                       onChange={(selectedTeam: SelectableValue<number>) => {
                         updatePermission(index, {
                           teamId: selectedTeam.value ?? 0,
@@ -387,7 +335,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
                       width={45}
                       options={datasourceOptions}
                       value={selectedDatasourceOptions}
-                      placeholder="Choose datasources"
+                      placeholder={t('Choose datasources')}
                       onChange={(selectedDatasources: Array<SelectableValue<string>>) => {
                         updatePermission(index, {
                           datasourceUids: selectedDatasources
@@ -397,19 +345,19 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
                       }}
                     />
                     <Button type="button" variant="destructive" onClick={() => removePermission(index)}>
-                      Remove
+                      {t('Remove')}
                     </Button>
                   </div>
                 );
               })}
               <Button type="button" variant="secondary" onClick={addPermission}>
-                Add team permission
+                {t('Add team permission')}
               </Button>
             </div>
           </Field>
           <div className={s.marginTop}>
-            <Button type='submit' disabled={!applicationAttributeKey}>
-              Save plugin settings
+            <Button type='submit'>
+              {t('Save plugin settings')}
             </Button>
           </div>
         </FieldSet>

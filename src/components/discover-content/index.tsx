@@ -1,8 +1,9 @@
 'use client';
-import { ColumnDef, ColumnOrderState, ColumnSizingState, OnChangeFn, Row, SortingState } from '@tanstack/react-table';
+import { t } from 'i18n';
+import { ColumnDef, ColumnSizingState, OnChangeFn, Row, SortingState } from '@tanstack/react-table';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { Drawer, IconButton, Pagination, Tab, TabContent, TabsBar, useTheme2 } from '@grafana/ui';
+import { Drawer, IconButton, Pagination, Select, Tab, TabContent, TabsBar, useTheme2 } from '@grafana/ui';
 import {
     tableTotalCountAtom,
     tableDataAtom,
@@ -13,15 +14,15 @@ import {
     pageAtom,
     afterCountAtom,
     beforeCountAtom,
-    surroundingDataFilterAtom,
     currentTimeFieldAtom,
     discoverCurrentAtom,
     selectedDatasourceAtom,
     tableFieldsAtom,
+    timeZoneAtom,
     discoverRowsExpandedAtom,
-    discoverColumnLayoutsAtom,
+    discoverRowsWrappedAtom,
+    discoverRowLineCountAtom,
 } from 'store/discover';
-import { get } from 'lodash-es';
 import { Button as AntButton, Tooltip } from 'antd';
 import SDCollapsibleTable from 'components/selectdb-ui/sd-collapsible-table';
 import { ColumnStyleWrapper, HoverStyle } from './discover-content.style';
@@ -32,9 +33,23 @@ import SurroundingLogs from 'components/surrounding-logs';
 import TraceDetail from 'components/trace-detail';
 import { usePluginContext } from '@grafana/data';
 import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
-import { formatFieldDisplayValue, formatTimestampToDateTime, isComplexType, isValidTimeFieldType, parseJsonLikeValue } from 'utils/data';
+import {
+    formatFieldDisplayValue,
+    formatRecordTimes,
+    generateHighlightedResults,
+    formatRecordDisplayValue,
+    formatTimestampToDateTime,
+    isComplexType,
+    isStructuredJsonType,
+    isValidTimeFieldType,
+    parseJsonLikeValue,
+} from 'utils/data';
 import { DiscoverQueryState, DiscoverSort } from 'types/discover';
-import { reconcileColumnOrder, reconcileColumnSizing } from 'utils/column-layout';
+import { useDiscoverColumnLayout } from 'hooks/useDiscoverColumnLayout';
+import { VariantValueViewer } from './variant-value-viewer';
+import { getVariantFieldValue } from 'utils/variant-fields';
+import { normalizeCount } from 'utils/count';
+import { LongTextCell } from 'components/long-text-cell';
 
 const EXPAND_COLUMN_ID = '__expand';
 const TIME_COLUMN_ID = '__time';
@@ -51,11 +66,11 @@ type DiscoverContentProps = {
     onSortChange: (sort: DiscoverSort) => void;
 };
 
-
 export default function DiscoverContent({ fetchNextPage, getTraceData, queryState, sort, onSortChange }: DiscoverContentProps) {
     const theme = useTheme2();
+    const timeZone = useAtomValue(timeZoneAtom);
     const [fields, setFields] = useState<any[]>([]);
-    const tableTotalCount = useAtomValue(tableTotalCountAtom);
+    const tableTotalCount = normalizeCount(useAtomValue(tableTotalCountAtom));
     const [tableData, _setTableData] = useAtom(tableDataAtom);
     const [selectedFields, setSelectedFields] = useAtom(selectedFieldsAtom);
     const hasSelectedFields = selectedFields.length > 0;
@@ -63,10 +78,9 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
     // const [surroundingOpen, setSurroundingOpen] = useState(false);
     const [selectedRow, setSelectedRow] = useAtom(selectedRowAtom);
     const setSurroundingTableData = useSetAtom(surroundingTableDataAtom);
-    const setSurroundingDataFilter = useSetAtom(surroundingDataFilterAtom);
     const setBeforeCount = useSetAtom(beforeCountAtom);
     const setAfterCount = useSetAtom(afterCountAtom);
-    const [pageSize, _setPageSize] = useAtom(pageSizeAtom);
+    const [pageSize, setPageSize] = useAtom(pageSizeAtom);
     const [page, setPage] = useAtom(pageAtom);
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [surroundingLogsOpen, setSurroundingLogsOpen] = useState(false);
@@ -75,44 +89,30 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
     const currentDatasource = useAtomValue(selectedDatasourceAtom);
     const tableFields = useAtomValue(tableFieldsAtom);
     const [discoverRowsExpanded, setDiscoverRowsExpanded] = useAtom(discoverRowsExpandedAtom);
-    const [columnLayouts, setColumnLayouts] = useAtom(discoverColumnLayoutsAtom);
+    const [discoverRowsWrapped, setDiscoverRowsWrapped] = useAtom(discoverRowsWrappedAtom);
+    const [rowLineCount, setRowLineCount] = useAtom(discoverRowLineCountAtom);
+    const cellLineCount = discoverRowsWrapped ? rowLineCount : 1;
     const availableColumnIds = useMemo(
-        () => [
-            EXPAND_COLUMN_ID,
-            TIME_COLUMN_ID,
-            ...(hasSelectedFields ? selectedFields.map((field: any) => getFieldColumnId(field.Field)) : [SOURCE_COLUMN_ID]),
-        ],
+        () => [EXPAND_COLUMN_ID, TIME_COLUMN_ID, ...(hasSelectedFields ? selectedFields.map((field: any) => getFieldColumnId(field.Field)) : [SOURCE_COLUMN_ID])],
         [hasSelectedFields, selectedFields],
     );
-    const availableColumnIdsKey = availableColumnIds.join('\u0000');
-    const validPersistentColumnIds = useMemo(
-        () => [
-            EXPAND_COLUMN_ID,
-            TIME_COLUMN_ID,
-            SOURCE_COLUMN_ID,
-            ...tableFields.map((field: any) => getFieldColumnId(String(field?.Field || field?.value || ''))),
-        ],
-        [tableFields],
+    const defaultColumnSizing = useMemo<ColumnSizingState>(
+        () => ({
+            [TIME_COLUMN_ID]: 240,
+            [SOURCE_COLUMN_ID]: 640,
+            ...Object.fromEntries(selectedFields.map((field: any) => [getFieldColumnId(field.Field), 240])),
+        }),
+        [selectedFields],
     );
-    const defaultColumnSizing = useMemo<ColumnSizingState>(() => ({
-        [TIME_COLUMN_ID]: 240,
-        [SOURCE_COLUMN_ID]: 640,
-        ...Object.fromEntries(selectedFields.map((field: any) => [getFieldColumnId(field.Field), 240])),
-    }), [selectedFields]);
     const layoutKey = useMemo(() => {
         const datasourceId = currentDatasource?.uid || currentDatasource?.id || currentDatasource?.name;
         if (!datasourceId || !discoverCurrent.database || !discoverCurrent.table) {
             return '';
         }
-        return JSON.stringify([
-            datasourceId,
-            discoverCurrent.catalog || 'internal',
-            discoverCurrent.database,
-            discoverCurrent.table,
-        ]);
+        return JSON.stringify([datasourceId, discoverCurrent.catalog || 'internal', discoverCurrent.database, discoverCurrent.table]);
     }, [currentDatasource?.id, currentDatasource?.name, currentDatasource?.uid, discoverCurrent.catalog, discoverCurrent.database, discoverCurrent.table]);
-    const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => availableColumnIds);
-    const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() => defaultColumnSizing);
+    const { columnOrder, columnSizing, onColumnOrderChange, onColumnSizingChange, resetColumnLayout } =
+        useDiscoverColumnLayout(layoutKey, availableColumnIds, defaultColumnSizing);
     const context = usePluginContext();
     // user settings
     const jsonData = context.meta.jsonData || {};
@@ -122,74 +122,13 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
     const [jumpPage, setJumpPage] = useState<string>(String(page));
 
     useEffect(() => {
-        const persistedLayout = layoutKey ? columnLayouts[layoutKey] : undefined;
-        setColumnOrder(reconcileColumnOrder(availableColumnIds, persistedLayout?.columnOrder));
-        setColumnSizing({
-            ...defaultColumnSizing,
-            ...reconcileColumnSizing(availableColumnIds, persistedLayout?.columnSizing),
-        });
-        // availableColumnIdsKey intentionally represents the primitive column identity list.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [availableColumnIdsKey, columnLayouts, defaultColumnSizing, layoutKey]);
-
-    useEffect(() => {
-        if (!layoutKey || columnOrder.length === 0) {
-            return;
-        }
-        const timeout = window.setTimeout(() => {
-            setColumnLayouts(previous => {
-                const currentLayout = previous[layoutKey];
-                const validIds = new Set(validPersistentColumnIds);
-                const inactiveColumnOrder = (currentLayout?.columnOrder || []).filter(
-                    id => validIds.has(id) && !columnOrder.includes(id),
-                );
-                const retainedSizing = Object.fromEntries(
-                    Object.entries(currentLayout?.columnSizing || {}).filter(([id]) => validIds.has(id)),
-                );
-                const nextLayout = {
-                    columnOrder: [...columnOrder, ...inactiveColumnOrder],
-                    columnSizing: { ...retainedSizing, ...columnSizing },
-                };
-                if (JSON.stringify(currentLayout) === JSON.stringify(nextLayout)) {
-                    return previous;
-                }
-                return { ...previous, [layoutKey]: nextLayout };
-            });
-        }, 250);
-        return () => window.clearTimeout(timeout);
-    }, [columnOrder, columnSizing, layoutKey, setColumnLayouts, validPersistentColumnIds]);
-
-    const resetColumnLayout = React.useCallback(() => {
-        setColumnOrder(availableColumnIds);
-        setColumnSizing(defaultColumnSizing);
-        if (layoutKey) {
-            setColumnLayouts(previous => {
-                if (!previous[layoutKey]) {
-                    return previous;
-                }
-                const { [layoutKey]: _removed, ...remaining } = previous;
-                return remaining;
-            });
-        }
-    }, [availableColumnIds, defaultColumnSizing, layoutKey, setColumnLayouts]);
-
-    useEffect(() => {
         setJumpPage(String(page));
     }, [page]);
 
-    const configuredDatasourceUid =
-        typeof datasource === 'string'
-            ? datasource
-            : datasource?.uid || datasource?.id;
-    const currentDatasourceIdentity = [
-        currentDatasource?.uid,
-        currentDatasource?.id,
-        currentDatasource?.name,
-    ].filter(Boolean);
+    const configuredDatasourceUid = typeof datasource === 'string' ? datasource : datasource?.uid || datasource?.id;
+    const currentDatasourceIdentity = [currentDatasource?.uid, currentDatasource?.id, currentDatasource?.name].filter(Boolean);
     const isTargetLogTable =
-        discoverCurrent.table === logsTable &&
-        discoverCurrent.database === database &&
-        (!configuredDatasourceUid || currentDatasourceIdentity.includes(configuredDatasourceUid));
+        discoverCurrent.table === logsTable && discoverCurrent.database === database && (!configuredDatasourceUid || currentDatasourceIdentity.includes(configuredDatasourceUid));
 
     useEffect(() => {
         if (theme.isDark) {
@@ -201,7 +140,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
 
     const [state, updateState] = useState([
         {
-            label: 'Table',
+            label: t('Table'),
             value: 'Table',
             active: true,
         },
@@ -217,12 +156,12 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
             return {
                 _original: item._original,
                 time: item._original?.[currentTimeField] || '',
-                _source: item._source,
+                _source: generateHighlightedResults({ search_value: '', indexes: [] }, [formatRecordTimes(item._original, tableFields, timeZone)])[0]._source,
                 _uid: item?._uid,
             };
         });
         setFields(data);
-    }, [tableData, currentTimeField]);
+    }, [tableData, currentTimeField, timeZone, tableFields]);
 
     const handleRemove = React.useCallback(
         (field: any) => {
@@ -285,8 +224,9 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                         >
                             <tbody>
                                 {subTableData.map((item: any) => {
-                                    const fieldValue = formatFieldDisplayValue(item.value, 'compact');
                                     const fieldName = item.field;
+                                    const fieldType = tableFields.find((field: any) => field.Field === fieldName)?.Type;
+                                    const fieldValue = isValidTimeFieldType(String(fieldType || '').toUpperCase()) && item.value != null ? formatTimestampToDateTime(item.value, 3, timeZone) : formatFieldDisplayValue(item.value, 'compact');
                                     const tableRowStyle = css`
                                         &:hover {
                                             .filter-table-content {
@@ -307,7 +247,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                                         visibility: hidden;
                                                     `}`}
                                                 >
-                                                    <ContentTableActions fieldName={fieldName} fieldValue={fieldValue} />
+                                                    <ContentTableActions fieldName={fieldName} fieldValue={formatFieldDisplayValue(item.value)} />
                                                 </div>
                                             </td>
                                             <td
@@ -331,7 +271,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                                         word-break: break-all;
                                                     `}
                                                 >
-                                                    {fieldValue}
+                                                    {isStructuredJsonType(fieldType) ? <VariantValueViewer value={item.value} /> : fieldValue}
                                                 </div>
                                             </td>
                                         </tr>
@@ -340,47 +280,26 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                             </tbody>
                         </table>
                     )}
-                    {state[1].active && (
-                        <div>
-                            <pre
-                                className={css`
-                                    padding: 16px;
-                                    margin: 0;
-                                    overflow-x: auto;
-                                    white-space: pre-wrap;
-                                    word-break: break-all;
-                                    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-                                    font-size: 12px;
-                                    line-height: 1.5;
-                                    ${theme.isDark ? 'background-color: #1e1e1e; color: #d4d4d4;' : 'background-color: #f5f5f5; color: #333;'}
-                                    border-radius: 4px;
-                                    max-height: 400px;
-                                    overflow-y: auto;
-                                `}
-                            >
-                                {formatFieldDisplayValue(processedData, 'pretty')}
-                            </pre>
-                        </div>
-                    )}
+                    {state[1].active && <VariantValueViewer value={processedData} rootName="JSON" />}
                 </TabContent>
-                <Tooltip title="Surrounding Items will ignore the existing interface's filter conditions and view the context through time.">
+                <Tooltip title={t('Surrounding logs ignore existing filters by default. Enable Filter to apply them.')}>
                     <a
                         onClick={() => {
                             setSurroundingLogsOpen(true);
                             setSelectedRow(row.original);
                         }}
                         className={css`
-                        position: absolute;
-                        right: 1rem;
-                        top: 0;
-                        cursor: pointer;
-                        padding-top: 0.5rem;
-                        &:hover {
-                            color: #3D71D9;
-                        }
-                    `}
+                            position: absolute;
+                            right: 1rem;
+                            top: 0;
+                            cursor: pointer;
+                            padding-top: 0.5rem;
+                            &:hover {
+                                color: #3d71d9;
+                            }
+                        `}
                     >
-                        Surrounding items
+                        {t('Surrounding items')}
                     </a>
                 </Tooltip>
             </div>
@@ -389,9 +308,9 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
 
     const callback = (status: number) => {
         if (status >= 200 && status <= 299) {
-            setDrawerOpen(true)
+            setDrawerOpen(true);
         }
-    }
+    };
 
     const openTraceDrawer = (traceId: string, table?: string) => {
         // request
@@ -414,9 +333,9 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                         row.getCanExpand() && (
                             <div className="flex items-center">
                                 {row.getIsExpanded() ? (
-                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-down" tooltip="Collapse" />
+                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-down" tooltip={t('Collapse')} />
                                 ) : (
-                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-right" tooltip="Expand" />
+                                    <IconButton onClick={row.getToggleExpandedHandler()} name="arrow-right" tooltip={t('Expand')} />
                                 )}
                                 <div className="ml-1">{getValue<string>()}</div>
                             </div>
@@ -426,7 +345,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
             },
             {
                 id: TIME_COLUMN_ID,
-                header: () => currentTimeField || 'Time',
+                header: () => currentTimeField || t('Time'),
                 accessorKey: 'time',
                 size: 240,
                 minSize: 80,
@@ -441,37 +360,22 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                     const fieldType = fieldInfo?.Type || '';
                     let timeField: any = fieldValue;
 
-                    // If this field is a valid time field type, try to format it
-                    try {
-                        if (fieldInfo && isValidTimeFieldType(String(fieldInfo.Type).toUpperCase())) {
-                            // if numeric timestamp, convert
-                            const num = Number(fieldValue);
-                            if (!Number.isNaN(num)) {
-                                timeField = formatTimestampToDateTime(num);
-                            } else {
-                                // otherwise keep raw string (or attempt Date parse)
-                                timeField = String(fieldValue || '');
-                            }
-                        }
-                    } catch (e) {
-                        // fallback to raw
-                        timeField = fieldValue;
+                    if (fieldInfo && isValidTimeFieldType(String(fieldInfo.Type).toUpperCase()) && fieldValue != null) {
+                        timeField = formatTimestampToDateTime(fieldValue, 3, timeZone);
                     }
                     return (
-                        <div
-                            className={HoverStyle}
-                        >
+                        <div className={HoverStyle}>
                             <div
                                 className={css`
-                                     display: flex;
-                                     align-items: center;
-                                 `}
+                                    display: flex;
+                                    align-items: center;
+                                `}
                             >
                                 {timeField}
                                 <div
                                     className={`filter-content ${css`
-                                         visibility: hidden;
-                                     `}`}
+                                        visibility: hidden;
+                                    `}`}
                                 >
                                     <ContentItem fieldName={fieldName} fieldValue={fieldValue} fieldType={fieldType} />
                                 </div>
@@ -517,38 +421,41 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                     };
 
                     return (
-                        <div
+                        <LongTextCell
+                            maxLines={cellLineCount}
+                            copyText={formatRecordDisplayValue(row.original._original)}
                             className={css`
-                                padding-top: 0.5rem;
-                                padding-bottom: 0.5rem;
+                                width: 100%;
+                                box-sizing: border-box;
                                 font-size: 0.875rem;
                                 line-height: 1.25rem;
                             `}
                         >
                             <ColumnStyleWrapper
+                                as="span"
                                 className={css`
+                                    && .field-pair {
+                                        display: inline;
+                                    }
                                     & .field-key {
                                         background-color: ${theme.isDark ? '#3f3f4f' : 'rgb(191, 217, 253)'};
                                     }
                                     & .trace-link {
                                         cursor: pointer;
                                         text-decoration: underline;
-                                        color: #3D71D9;
+                                        color: #3d71d9;
                                     }
                                 `}
                             >
-                                <div
+                                <span
                                     onClick={handleClick}
                                     dangerouslySetInnerHTML={{ __html: html }}
                                     className={css`
-                                        max-height: 12rem;
-                                        overflow: auto;
-                                        word-break: break-all;
-                                        white-space: pre-wrap;
+                                        display: inline;
                                     `}
                                 />
                             </ColumnStyleWrapper>
-                        </div>
+                        </LongTextCell>
                     );
                 },
             });
@@ -558,7 +465,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                 ...selectedFields.map((field: any) => {
                     return {
                         id: getFieldColumnId(field.Field),
-                        accessorFn: (row: any) => get(row._original, field.Field),
+                        accessorFn: (row: any) => getVariantFieldValue(row._original, field),
                         size: 240,
                         minSize: 80,
                         maxSize: 800,
@@ -574,7 +481,7 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                 <div>{field.Field}</div>
                                 <IconButton
                                     name="times"
-                                    tooltip="Remove"
+                                    tooltip={t('Remove')}
                                     style={{
                                         marginLeft: '8px',
                                         cursor: 'pointer',
@@ -588,9 +495,9 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                 />
                             </div>
                         ),
-                        cell: ({ row, getValue }: any) => {
-                            // let fieldValue = row.original._original[field.Field];
-                            const fieldValue = formatFieldDisplayValue(get(row.original._original, field.Field), 'compact');
+                        cell: ({ row }: any) => {
+                            const rawFieldValue = getVariantFieldValue(row.original._original, field);
+                            const fieldValue = isValidTimeFieldType(String(field.Type || '').toUpperCase()) && rawFieldValue != null ? formatTimestampToDateTime(rawFieldValue, 3, timeZone) : formatFieldDisplayValue(rawFieldValue, 'compact');
                             const fieldName = field.Field;
                             const fieldType = field.Type;
                             return (
@@ -601,53 +508,33 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                         min-height: 48px;
                                     `}`}
                                 >
-                                    <div
-                                        className={css`
-                                            max-height: 192px;
-                                            overflow: auto;
-                                        `}
+                                    <LongTextCell
+                                        maxLines={cellLineCount}
+                                        copyText={isStructuredJsonType(fieldType) ? formatFieldDisplayValue(rawFieldValue, 'pretty') : fieldValue}
+                                        className={css`font-size: 12px;`}
                                     >
-                                        <div
-                                            className={css`
-                                                display: flex;
-                                                align-items: center;
-                                                padding: 16px 16px 16px 0;
-                                                word-break: break-all;
-                                            `}
-                                        >
-                                            {field.value === 'trace_id' ? <AntButton
-                                                className={css`padding-left: 0px;`}
+                                        {field.value === 'trace_id' ? (
+                                            <AntButton
+                                                className={css`padding: 0; height: auto; font: inherit;`}
                                                 onClick={() => {
                                                     if (isTargetLogTable && targetTraceTable) {
-                                                        openTraceDrawer(fieldValue, targetTraceTable)
+                                                        openTraceDrawer(fieldValue, targetTraceTable);
                                                     } else {
                                                         openTraceDrawer(fieldValue);
                                                     }
                                                 }}
-                                                type="link">
+                                                type="link"
+                                            >
                                                 {fieldValue}
-                                            </AntButton> : (
-                                                <span
-                                                    className={css`
-                                                        display: block;
-                                                        width: 100%;
-                                                        font-size: 12px;
-                                                        white-space: nowrap;
-                                                        text-overflow: ellipsis;
-                                                        overflow: hidden;
-                                                    `}
-                                                >
-                                                    {fieldValue}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
+                                            </AntButton>
+                                        ) : fieldValue}
+                                    </LongTextCell>
                                     <div
                                         className={`filter-content ${css`
                                             visibility: hidden;
                                         `}`}
                                     >
-                                        <ContentItem fieldName={fieldName} fieldValue={fieldValue} fieldType={fieldType} />
+                                        <ContentItem fieldName={fieldName} fieldValue={rawFieldValue} fieldType={fieldType} />
                                     </div>
                                 </div>
                             );
@@ -658,142 +545,280 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
         }
         return dynamicColumns;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentTimeField, handleRemove, hasSelectedFields, selectedFields, theme.isDark]);
+    }, [timeZone, currentTimeField, cellLineCount, handleRemove, hasSelectedFields, selectedFields, theme.isDark]);
 
     const tableSorting = useMemo<SortingState>(() => {
-        const selectedColumnId = sort.field === currentTimeField || !sort.field
-            ? TIME_COLUMN_ID
-            : selectedFields.some((field: any) => field.Field === sort.field)
+        const selectedColumnId =
+            sort.field === currentTimeField || !sort.field
+                ? TIME_COLUMN_ID
+                : selectedFields.some((field: any) => field.Field === sort.field)
                 ? getFieldColumnId(sort.field)
                 : TIME_COLUMN_ID;
         return [{ id: selectedColumnId, desc: sort.direction === 'DESC' }];
     }, [currentTimeField, selectedFields, sort.direction, sort.field]);
 
     useEffect(() => {
-        if (
-            sort.field &&
-            sort.field !== currentTimeField &&
-            !selectedFields.some((field: any) => field.Field === sort.field)
-        ) {
+        if (sort.field && sort.field !== currentTimeField && !selectedFields.some((field: any) => field.Field === sort.field)) {
             onSortChange({ field: currentTimeField, direction: 'DESC' });
         }
     }, [currentTimeField, onSortChange, selectedFields, sort.field]);
 
-    const handleTableSortingChange = React.useCallback<OnChangeFn<SortingState>>((updater) => {
-        const nextSorting = typeof updater === 'function' ? updater(tableSorting) : updater;
-        const nextColumn = nextSorting[0];
-        if (!nextColumn) {
-            onSortChange({ field: currentTimeField, direction: 'DESC' });
-            return;
-        }
-        const field = nextColumn.id === TIME_COLUMN_ID
-            ? currentTimeField
-            : nextColumn.id.startsWith(FIELD_COLUMN_PREFIX)
-                ? nextColumn.id.slice(FIELD_COLUMN_PREFIX.length)
-                : currentTimeField;
-        onSortChange({ field, direction: nextColumn.desc ? 'DESC' : 'ASC' });
-    }, [currentTimeField, onSortChange, tableSorting]);
+    const handleTableSortingChange = React.useCallback<OnChangeFn<SortingState>>(
+        updater => {
+            const nextSorting = typeof updater === 'function' ? updater(tableSorting) : updater;
+            const nextColumn = nextSorting[0];
+            if (!nextColumn) {
+                onSortChange({ field: currentTimeField, direction: 'DESC' });
+                return;
+            }
+            const field =
+                nextColumn.id === TIME_COLUMN_ID
+                    ? currentTimeField
+                    : nextColumn.id.startsWith(FIELD_COLUMN_PREFIX)
+                    ? nextColumn.id.slice(FIELD_COLUMN_PREFIX.length)
+                    : currentTimeField;
+            const selectedField = selectedFields.find((item: any) => item.Field === field);
+            onSortChange({
+                field,
+                direction: nextColumn.desc ? 'DESC' : 'ASC',
+                variantPath: selectedField?.variantPath,
+                variantType: selectedField?.Type,
+            });
+        },
+        [currentTimeField, onSortChange, selectedFields, tableSorting],
+    );
 
-    const emptyContent = queryState.status === 'error' ? (
-        <div role="status" className={css`padding: 32px 16px; text-align: center;`}>
-            <strong>Query failed</strong>
-            <div className={css`margin-top: 4px; color: ${theme.colors.text.secondary};`}>
-                Review the query error above, then update the query and try again.
+    const emptyContent =
+        queryState.status === 'error' ? (
+            <div
+                role="status"
+                className={css`
+                    padding: 32px 16px;
+                    text-align: center;
+                `}
+            >
+                <strong>{t('Query failed')}</strong>
+                <div
+                    className={css`
+                        margin-top: 4px;
+                        color: ${theme.colors.text.secondary};
+                    `}
+                >
+                    {t('Review the query error above, then update the query and try again.')}
+                </div>
             </div>
-        </div>
-    ) : queryState.status === 'success' && queryState.rowCount === 0 ? (
-        <div role="status" className={css`padding: 32px 16px; text-align: center;`}>
-            <strong>Query succeeded — no results</strong>
-            <div className={css`margin-top: 4px; color: ${theme.colors.text.secondary};`}>
-                Try expanding the time range or adjusting the filters.
+        ) : queryState.status === 'success' && queryState.rowCount === 0 ? (
+            <div
+                role="status"
+                className={css`
+                    padding: 32px 16px;
+                    text-align: center;
+                `}
+            >
+                <strong>{t('Query succeeded — no results')}</strong>
+                <div
+                    className={css`
+                        margin-top: 4px;
+                        color: ${theme.colors.text.secondary};
+                    `}
+                >
+                    {t('Try expanding the time range or adjusting the filters.')}
+                </div>
             </div>
-        </div>
-    ) : queryState.status === 'loading' ? (
-        <div role="status" className={css`padding: 32px 16px; text-align: center;`}>Querying…</div>
-    ) : undefined;
+        ) : queryState.status === 'loading' ? (
+            <div
+                role="status"
+                className={css`
+                    padding: 32px 16px;
+                    text-align: center;
+                `}
+            >
+                {t('Querying…')}
+            </div>
+        ) : undefined;
 
-    const isLayoutModified = JSON.stringify(columnOrder) !== JSON.stringify(availableColumnIds) ||
-        JSON.stringify(columnSizing) !== JSON.stringify(defaultColumnSizing);
+    const isLayoutModified = JSON.stringify(columnOrder) !== JSON.stringify(availableColumnIds) || JSON.stringify(columnSizing) !== JSON.stringify(defaultColumnSizing);
 
     return (
         <div
             className={css`
-                overflow-x: scroll;
+                display: flex;
+                flex-direction: column;
+                width: 100%;
+                min-width: 0;
             `}
         >
             <div
                 className={css`
                     display: flex;
                     justify-content: flex-end;
+                    align-items: center;
+                    gap: 12px;
                     min-height: 28px;
+                    flex: none;
                     padding: 0 8px 4px;
                 `}
             >
-                <IconButton
-                    name="history"
-                    tooltip="Reset column layout"
-                    aria-label="Reset column layout"
-                    disabled={!isLayoutModified}
-                    onClick={resetColumnLayout}
-                />
-            </div>
-            <SDCollapsibleTable
-                className={css`
-                    width: 100%;
-                `}
-                data={fields}
-                columns={columns}
-                getRowCanExpand={() => true}
-                renderSubComponent={renderSubComponent}
-                showExpandAllToggle
-                allRowsExpanded={discoverRowsExpanded}
-                onAllRowsExpandedChange={setDiscoverRowsExpanded}
-                columnOrder={columnOrder}
-                onColumnOrderChange={setColumnOrder}
-                columnSizing={columnSizing}
-                onColumnSizingChange={setColumnSizing}
-                sorting={tableSorting}
-                onSortingChange={handleTableSortingChange}
-                enableColumnReordering
-                emptyContent={emptyContent}
-            />
-            {queryState.status !== 'error' ? <div
-                className={css`
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    padding: 0.5rem 1rem;
-                    padding-bottom: 20px;
-                `}
-            >
-                <div>Total {tableTotalCount} rows</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Pagination
-                        currentPage={page}
-                        numberOfPages={Math.ceil(tableTotalCount / pageSize) || 1}
-                        onNavigate={toPage => {
-                            setPage(toPage);
+                <label
+                    htmlFor="discover-row-lines"
+                    className={css`
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        cursor: pointer;
+                        font-size: 12px;
+                        color: ${theme.colors.text.secondary};
+                    `}
+                >
+                    {t('Row height')}<Select placeholder={t('Choose')}
+                        inputId="discover-row-lines"
+                        aria-label={t('Cell display lines')}
+                        width={14}
+                        options={[
+                            { label: t('Single line'), value: 1 },
+                            { label: t('3 lines'), value: 3 },
+                            { label: t('5 lines'), value: 5 },
+                            { label: t('Auto'), value: 0 },
+                        ]}
+                        value={cellLineCount}
+                        onChange={option => {
+                            const lines = option.value;
+                            if (lines === 0 || lines === 1 || lines === 3 || lines === 5) {
+                                setRowLineCount(lines);
+                                setDiscoverRowsWrapped(lines !== 1);
+                            }
                         }}
                     />
-                    {/* Page jump input */}
+                </label>
+                <IconButton name="history" tooltip={t('Reset column layout')} aria-label={t('Reset column layout')} disabled={!isLayoutModified} onClick={resetColumnLayout} />
+            </div>
+            <div
+                data-testid="discover-table-scroll"
+                className={css`
+                    min-width: 0;
+                    overflow-x: auto;
+                `}
+            >
+                <SDCollapsibleTable
+                    className={css`
+                        width: 100%;
+                    `}
+                    data={fields}
+                    columns={columns}
+                    getRowCanExpand={() => true}
+                    renderSubComponent={renderSubComponent}
+                    showExpandAllToggle
+                    allRowsExpanded={discoverRowsExpanded}
+                    onAllRowsExpandedChange={setDiscoverRowsExpanded}
+                    columnOrder={columnOrder}
+                    onColumnOrderChange={onColumnOrderChange}
+                    columnSizing={columnSizing}
+                    onColumnSizingChange={onColumnSizingChange}
+                    sorting={tableSorting}
+                    onSortingChange={handleTableSortingChange}
+                    enableColumnReordering
+                    emptyContent={emptyContent}
+                    rowVerticalPadding={3}
+                    stickyHeader={false}
+                />
+            </div>
+            {queryState.status !== 'error' ? (
+                <div
+                    data-testid="discover-pagination"
+                    className={css`
+                        display: flex;
+                        flex: none;
+                        justify-content: space-between;
+                        align-items: center;
+                        flex-wrap: wrap;
+                        gap: 8px 16px;
+                        padding: 0.5rem 1rem;
+                        padding-bottom: 8px;
+                    `}
+                >
+                    <div>{t('Total {{count}} rows', { count: tableTotalCount })}</div>
                     <div
                         className={css`
                             display: flex;
                             align-items: center;
+                            justify-content: flex-end;
+                            flex-wrap: wrap;
                             gap: 8px;
                         `}
                     >
-                        {/* local controlled input for typing page number */}
-                        <input
-                            type="number"
-                            min={1}
-                            step={1}
-                            value={jumpPage}
-                            onChange={e => {
-                                setJumpPage(e.target.value);
+                        <label
+                            className={css`
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                            `}
+                        >
+                            {t('Rows per page')}<Select placeholder={t('Choose')}
+                                aria-label={t('Rows per page')}
+                                options={[20, 50, 100, 200].map(size => ({ label: String(size), value: size }))}
+                                value={pageSize}
+                                onChange={option => {
+                                    const nextPageSize = Number(option.value);
+                                    if (![20, 50, 100, 200].includes(nextPageSize)) {
+                                        return;
+                                    }
+                                    setPageSize(nextPageSize);
+                                    setPage(1);
+                                    setJumpPage('1');
+                                }}
+                                width={10}
+                            />
+                        </label>
+                        <Pagination
+                            currentPage={page}
+                            numberOfPages={Math.ceil(tableTotalCount / pageSize) || 1}
+                            onNavigate={toPage => {
+                                setPage(toPage);
                             }}
-                            onKeyDown={e => {
-                                if (e.key === 'Enter') {
+                        />
+                        {/* Page jump input */}
+                        <div
+                            className={css`
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                            `}
+                        >
+                            {/* local controlled input for typing page number */}
+                            <input
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={jumpPage}
+                                onChange={e => {
+                                    setJumpPage(e.target.value);
+                                }}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                        const num = Number(jumpPage);
+                                        const total = Math.max(Math.ceil(tableTotalCount / pageSize) || 1, 1);
+                                        if (!Number.isNaN(num)) {
+                                            const target = Math.min(Math.max(1, Math.floor(num)), total);
+                                            setPage(target);
+                                            try {
+                                                fetchNextPage && fetchNextPage(target);
+                                            } catch {}
+                                            setJumpPage(String(target));
+                                        } else {
+                                            // reset to current page if invalid
+                                            setJumpPage(String(page));
+                                        }
+                                    }
+                                }}
+                                className={css`
+                                    width: 72px;
+                                    padding: 6px 8px;
+                                    border-radius: 4px;
+                                    border: 1px solid rgba(0, 0, 0, 0.15);
+                                `}
+                            />
+                            <button
+                                onClick={() => {
                                     const num = Number(jumpPage);
                                     const total = Math.max(Math.ceil(tableTotalCount / pageSize) || 1, 1);
                                     if (!Number.isNaN(num)) {
@@ -801,59 +826,36 @@ export default function DiscoverContent({ fetchNextPage, getTraceData, queryStat
                                         setPage(target);
                                         try {
                                             fetchNextPage && fetchNextPage(target);
-                                        } catch { }
+                                        } catch {}
                                         setJumpPage(String(target));
                                     } else {
-                                        // reset to current page if invalid
                                         setJumpPage(String(page));
                                     }
-                                }
-                            }}
-                            className={css`
-                                width: 72px;
-                                padding: 6px 8px;
-                                border-radius: 4px;
-                                border: 1px solid rgba(0,0,0,0.15);
-                            `}
-                        />
-                        <button
-                            onClick={() => {
-                                const num = Number(jumpPage);
-                                const total = Math.max(Math.ceil(tableTotalCount / pageSize) || 1, 1);
-                                if (!Number.isNaN(num)) {
-                                    const target = Math.min(Math.max(1, Math.floor(num)), total);
-                                    setPage(target);
-                                    try {
-                                        fetchNextPage && fetchNextPage(target);
-                                    } catch { }
-                                    setJumpPage(String(target));
-                                } else {
-                                    setJumpPage(String(page));
-                                }
-                            }}
-                            className={css`
-                                padding: 6px 10px;
-                                border-radius: 4px;
-                                border: 1px solid rgba(0,0,0,0.15);
-                                background: transparent;
-                                cursor: pointer;
-                            `}
-                        >Go</button>
+                                }}
+                                className={css`
+                                    padding: 6px 10px;
+                                    border-radius: 4px;
+                                    border: 1px solid rgba(0, 0, 0, 0.15);
+                                    background: transparent;
+                                    cursor: pointer;
+                                `}
+                            >
+                                {t('Go')}
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div> : null}
+            ) : null}
             <TraceDetail onClose={() => setDrawerOpen(false)} open={drawerOpen} traceId={selectedRow?.trace_id} traceTable="otel_traces" />
 
             {surroundingLogsOpen && (
                 <Drawer
                     size="lg"
-                    title="Surrounding items"
+                    title={t('Surrounding items')}
                     onClose={() => {
                         setSurroundingTableData([]);
-                        setSurroundingDataFilter([]);
                         setBeforeCount(0);
                         setAfterCount(0);
-                        // setSelectedSurroundingFields([]);
                         setSurroundingLogsOpen(false);
                     }}
                 >

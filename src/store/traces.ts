@@ -1,3 +1,4 @@
+import { TracesCapability } from 'types/traces';
 import { DEFAULT_OPERATION, DEFAULT_SERVICE } from '../constants';
 import { atom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
@@ -13,3 +14,5 @@ export const tracesServicesAtom = atom<any>([]);
 export const traceOperationsAtom = atom<any>([]);
 export const minDurationAtom = atom<any>('');
 export const maxDurationAtom = atom<any>('');
+
+export const tracesCapabilityAtom = atom<Record<string, TracesCapability>>({});

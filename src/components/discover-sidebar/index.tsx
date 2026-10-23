@@ -1,22 +1,25 @@
+import { t } from 'i18n';
 import { useAtom, useAtomValue } from 'jotai';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import FieldItem from './field-item/field-item';
 import { FilterContent } from './filter-content/filter-content';
-import { selectedFieldsAtom, tableFieldsAtom, searchableAtom, aggregatableAtom, fieldTypeAtom, indexesAtom, surroundingSelectedFieldsAtom } from 'store/discover';
-import { AggregatableEnum, getFieldType, SearchableEnum, FieldTypeEnum } from 'utils/data';
+import { selectedFieldsAtom, tableFieldsAtom, variantFieldsAtom, searchableAtom, aggregatableAtom, fieldTypeAtom, indexesAtom, fieldStatisticsFieldAtom, topNConfigurationFieldAtom } from 'store/discover';
+import { AggregatableEnum, getFieldType, SearchableEnum, FieldTypeEnum, isStructuredJsonType } from 'utils/data';
 import { Button, CollapsableSection, Icon, Input, useTheme2, Toggletip } from '@grafana/ui';
 import { css } from '@emotion/css';
 
 export default function DiscoverSidebar() {
     const [selectedFields, setSelectedFields] = useAtom(selectedFieldsAtom);
-    const [selectedSurroundingFields, setSelectedSurroundingFields] = useAtom(surroundingSelectedFieldsAtom);
     const tableFields = useAtomValue(tableFieldsAtom);
+    const variantFields = useAtomValue(variantFieldsAtom);
     const [searchable, _setSearchable] = useAtom(searchableAtom);
     const [aggregatable, _setAggregatable] = useAtom(aggregatableAtom);
     const [fieldType, _setFieldType] = useAtom(fieldTypeAtom);
     const [searchValue, setSearchValue] = useState('');
     const indexes = useAtomValue(indexesAtom);
     const theme = useTheme2();
+    const [, setFieldStatisticsField] = useAtom(fieldStatisticsFieldAtom);
+    const [, setTopNConfigurationField] = useAtom(topNConfigurationFieldAtom);
     const filteredFields = tableFields
         .filter(field => {
             if (aggregatable === AggregatableEnum.ANY) {
@@ -49,26 +52,34 @@ export default function DiscoverSidebar() {
             return getFieldType(field.Type) === fieldType;
         });
     const hasSelectedFields = selectedFields.length > 0;
-    const availableFields = filteredFields.filter(filed => {
-        if (selectedFields.find(item => filed['Field'] === item['Field'])) {
-            return false;
-        }
-        return true;
-    });
+    const selectedFieldNames = useMemo(() => new Set(selectedFields.map((field: any) => field.Field)), [selectedFields]);
+    const availableFields = useMemo(() => {
+        const treeByRoot = new Map(variantFields.map((field: any) => [field.Field, field]));
+        return filteredFields
+            .map((field: any) => isStructuredJsonType(field.Type) ? treeByRoot.get(field.Field) || field : field)
+            .filter((field: any) => {
+                if (!field.children?.length) {
+                    return !selectedFieldNames.has(field.Field);
+                }
+                return !selectedFieldNames.has(field.Field) || field.children.some((child: any) => !selectedFieldNames.has(child.Field));
+            });
+    }, [filteredFields, selectedFieldNames, variantFields]);
 
     function handleAdd(field: any) {
         setSelectedFields([...selectedFields, field] as any);
-        setSelectedSurroundingFields([...selectedSurroundingFields, field] as any)
     }
 
     function handleRemove(field: any) {
-        const index = selectedFields.findIndex((item: any) => item.Field === field.Field);
-        selectedFields.splice(index, 1);
+        setSelectedFields(current => current.filter((item: any) => item.Field !== field.Field));
+    }
 
-        const surIndex = selectedSurroundingFields.findIndex((item: any) => item.Field === field.Field);
-        selectedSurroundingFields.splice(surIndex, 1);
-        setSelectedFields([...selectedFields]);
-        setSelectedSurroundingFields([...selectedSurroundingFields]);
+    function handleFieldStatistics(field: any) {
+        const rootType = field.variantPath?.length ? tableFields.find((item: any) => item.Field === field.variantPath[0])?.Type : undefined;
+        setFieldStatisticsField({ Field: field.Field, Type: field.Type, variantPath: field.variantPath, variantRootType: rootType });
+    }
+
+    function handleTopN(field: any) {
+        setTopNConfigurationField({ Field: field.Field, Type: field.Type });
     }
 
     return (
@@ -91,7 +102,7 @@ export default function DiscoverSidebar() {
             >
                 <Icon name="search" />
                 <Input
-                    placeholder={`Search`}
+                    placeholder={t('Search')}
                     className={css`
                         border: none;
                     `}
@@ -105,18 +116,22 @@ export default function DiscoverSidebar() {
             <div
                 className={css`
                     margin-top: 1px;
-                    flex: 1;
+                    flex: 1 1 0;
                     padding: 0.5rem 1rem 0.5rem 1rem;
                     background-color: ${theme.isDark ? 'rgb(24, 27, 31)' : '#FFF'};
-                    height: 100%;
-                    overflow: auto;
+                    min-height: 0;
+                    height: 0;
+                    overflow-x: hidden;
+                    overflow-y: auto;
+                    overscroll-behavior: contain;
                 `}
             >
                 <CollapsableSection label={<span className={css`
                         margin-left: 4px;
                         font-size: 14px;
                         line-height: 32px;
-                    `}>Selected fields</span>} isOpen={true}>
+                    `}>{t('Selected fields')}
+                                           </span>} isOpen={true}>
                     <div
                         className={css`
                             width: 100%;
@@ -133,7 +148,7 @@ export default function DiscoverSidebar() {
                                         return field['Field'].toLowerCase().includes(searchValue.toLowerCase());
                                     })
                                     .map((field: any, index) => (
-                                        <FieldItem type="remove" key={index} field={field} onRemove={field => handleRemove(field)} />
+                                        <FieldItem type="remove" key={field.variantPath?.join('\u0000') || index} field={field} onRemove={field => handleRemove(field)} showChildren={false} />
                                     ))}
                             </div>
                         ) : (
@@ -158,18 +173,16 @@ export default function DiscoverSidebar() {
                         margin-left: 4px;
                         font-size: 14px;
                         line-height: 32px;
-                    `}>Available fields</span>}  isOpen={true}>
+                    `}>{t('Available fields')}
+                                           </span>}  isOpen={true}>
                     <div
                         className={css`
                             width: 100%;
                         `}
                     >
                         {availableFields
-                            .filter((field: any) => {
-                                return field['Field'].toLowerCase().includes(searchValue.toLowerCase());
-                            })
                             .map((field: any, index) => (
-                                <FieldItem type="add" field={field} key={index} onAdd={field => handleAdd(field)} />
+                                <FieldItem type="add" field={field} key={field.Field || index} onAdd={field => handleAdd(field)} onFieldStatistics={handleFieldStatistics} onTopN={handleTopN} isSelected={field => selectedFieldNames.has(field.Field)} searchActive={searchValue} />
                             ))}
                     </div>
                 </CollapsableSection>

@@ -1,16 +1,37 @@
+import { t } from 'i18n';
+import { buildAbsoluteTimeRange, formatTimeInZone } from 'utils/time';
 import ReactECharts from 'echarts-for-react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import React, { useEffect, useRef, useState } from 'react';
 import dayjs from 'dayjs';
-import { Select, useTheme2 } from '@grafana/ui';
+import { IconButton, Select, useTheme2 } from '@grafana/ui';
 import { IntervalEnum } from 'types/type';
 import { TIME_INTERVALS } from 'utils/data';
-import { getAutoInterval, FORMAT_DATE, translationDateIntervalType } from '../../constants';
-import { currentDateAtom, discoverCurrentAtom, activeShortcutAtom, tableDataChartsAtom, intervalAtom, tableTotalCountAtom, pageSizeAtom, pageAtom, timeRangeAtom } from 'store/discover';
+import { getAutoInterval, translationDateIntervalType } from '../../constants';
+import {
+    currentDateAtom,
+    discoverCurrentAtom,
+    activeShortcutAtom,
+    tableDataChartsAtom,
+    intervalAtom,
+    tableTotalCountAtom,
+    pageSizeAtom,
+    pageAtom,
+    timeRangeAtom,
+    timeZoneAtom,
+} from 'store/discover';
 import { css } from '@emotion/css';
+import { normalizeCount } from 'utils/count';
 
-export function DiscoverHistogram() {
+type DiscoverHistogramProps = {
+    height?: number;
+    collapsed?: boolean;
+    onToggleCollapsed?: () => void;
+};
+
+export function DiscoverHistogram({ height = 300, collapsed = false, onToggleCollapsed }: DiscoverHistogramProps) {
     const theme = useTheme2().isDark ? 'dark' : 'light';
+    const timeZone = useAtomValue(timeZoneAtom);
     const [currentDate, setCurrentDate] = useAtom(currentDateAtom);
     const ReactEChartsInstance = useRef<ReactECharts>(null);
     const [discoverCurrent, setDiscoverCurrent] = useAtom(discoverCurrentAtom);
@@ -25,7 +46,7 @@ export function DiscoverHistogram() {
     if (process.env.NODE_ENV !== 'production') {
         intervalAtom.debugLabel = 'interval';
     }
-    const tableTotalCount = useAtomValue(tableTotalCountAtom);
+    const tableTotalCount = normalizeCount(useAtomValue(tableTotalCountAtom));
     const [_timeRange, setTimeRange] = useAtom(timeRangeAtom);
     const [_pageSize, setPageSize] = useAtom(pageSizeAtom);
     const setPage = useSetAtom(pageAtom);
@@ -37,17 +58,9 @@ export function DiscoverHistogram() {
 
     const timeInterval = interval === IntervalEnum.Auto ? translationDateIntervalType(interval) : `${interval_value} ${translationDateIntervalType(interval)}`;
 
-    let base = +new Date(1988, 9, 3);
-    let oneDay = 24 * 3600 * 1000;
-    let data = [[base, Math.random() * 300]];
-    for (let i = 1; i < 20000; i++) {
-        let now = new Date((base += oneDay));
-        data.push([+now, Math.round((Math.random() - 0.5) * 20 + data[i - 1][1])]);
-    }
-
     const options: any = {
         title: {
-            subtext: `${`Time Interval`}: ${timeInterval}`,
+            subtext: t('Time Interval: {{interval}}', { interval: timeInterval }),
             left: 'right',
             top: 12,
         },
@@ -60,7 +73,7 @@ export function DiscoverHistogram() {
         color: theme === 'light' ? ['#608DFF'] : ['#608DFF'],
         xAxis: {
             type: 'category',
-            data: tableDataCharts.map(e => e['TT']),
+            data: tableDataCharts.map(e => e.label),
             axisLabel: {
                 fontSize: '12px', // 字体大小
                 fontStyle: 'normal',
@@ -84,7 +97,7 @@ export function DiscoverHistogram() {
             xAxisIndex: 0,
         },
         yAxis: {
-            name: `Count`,
+            name: t('Count'),
             nameTextStyle: {
                 align: 'right',
                 padding: [5, 0],
@@ -122,8 +135,8 @@ export function DiscoverHistogram() {
                                         ">
                                       <div style="padding-bottom: 4px; border-bottom: 1px solid ${theme === 'light' ? '#DFDFE0' : '#3F3F45'};">${[params[0].name]}</div>
                                       <div style="padding-top:4px;display: flex;justify-content: space-between;"><span>Count:</span><span style="font-family:DIN Alternate;font-size:14;font-weight:500;">${[
-                        params[0].value || 0,
-                    ]}</span></div>
+                                          params[0].value || 0,
+                                      ]}</span></div>
                                   </div>`;
                 return html;
             },
@@ -151,23 +164,11 @@ export function DiscoverHistogram() {
                 setPageSize(50);
                 setActiveItem(undefined);
                 const [startIndex, endIndex] = (areas[0] as any).coordRange as [startIndex: number, endIndex: number];
-                const timeInterval = interval === IntervalEnum.Auto ? getAutoInterval(currentDate as any).interval_unit : interval;
-                const chartsEndDate = dayjs(new Date(tableDataCharts[endIndex]['TT'])).add(interval_value, timeInterval);
-                setDiscoverCurrent({
-                    ...discoverCurrent,
-                    date: [dayjs(tableDataCharts[startIndex]['TT']), chartsEndDate],
-                });
-
-                setCurrentDate([dayjs(tableDataCharts[startIndex]['TT']), chartsEndDate]);
-                const timeRange = {
-                    from: dayjs(tableDataCharts[startIndex]['TT']).format(FORMAT_DATE),
-                    to: chartsEndDate.format(FORMAT_DATE),
-                    raw: {
-                        from: dayjs(tableDataCharts[startIndex]['TT']).format(FORMAT_DATE),
-                        to: chartsEndDate.format(FORMAT_DATE),
-                    },
-                };
-                setTimeRange(timeRange);
+                const chartsStartDate = dayjs(tableDataCharts[startIndex].TT);
+                const chartsEndDate = dayjs(tableDataCharts[endIndex].bucketEnd);
+                setDiscoverCurrent({ ...discoverCurrent, date: [chartsStartDate, chartsEndDate] });
+                setCurrentDate([chartsStartDate, chartsEndDate]);
+                setTimeRange(buildAbsoluteTimeRange(chartsStartDate, chartsEndDate));
                 chart.getEchartsInstance().dispatchAction({
                     type: 'brush',
                     command: 'clear',
@@ -196,7 +197,11 @@ export function DiscoverHistogram() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tableDataCharts]);
     return (
-        <div className={css`padding: 0 16px;`}>
+        <div
+            className={css`
+                padding: 0 16px;
+            `}
+        >
             <div
                 className={css`
                     display: flex;
@@ -205,26 +210,35 @@ export function DiscoverHistogram() {
                 `}
             >
                 <div>
-                    <span className={css`
+                    <span
+                        className={css`
                             font-size: 24px;
                             font-weight: 600;
                         `}
                     >
                         {tableTotalCount ? tableTotalCount.toString().replace(/(\d)(?=(?:\d{3})+$)/g, '$1,') : '0'}
                     </span>{' '}
-                    <span className={css`font-size: 12px;`}>{`hits`}</span>
+                    <span
+                        className={css`
+                            font-size: 12px;
+                        `}
+                    >{t('hits')}
+                    </span>
                 </div>
-                <div className={css`
+                <div
+                    className={css`
                         font-size: 14px;
-                        color: rgb(190,190,193)
+                        color: rgb(190, 190, 193);
                     `}
-                >{currentDate && `${currentDate[0]?.format(FORMAT_DATE)} ~ ${currentDate[1]?.format(FORMAT_DATE)} `}</div>
+                >
+                    {currentDate && `${(currentDate[0] ? formatTimeInZone(currentDate[0], timeZone) : '')} ~ ${(currentDate[1] ? formatTimeInZone(currentDate[1], timeZone) : '')} `}
+                </div>
                 <div
                     className={css`
                         width: 160px;
                     `}
                 >
-                    <Select
+                    <Select placeholder={t('Choose')}
                         value={interval}
                         onChange={selectdbInterval => {
                             setInterval(selectdbInterval.value as any);
@@ -232,14 +246,23 @@ export function DiscoverHistogram() {
                         options={TIME_INTERVALS}
                     />
                 </div>
+                <IconButton
+                    aria-label={collapsed ? t('Expand chart') : t('Collapse chart')}
+                    data-testid="discover-chart-toggle"
+                    name={collapsed ? 'angle-down' : 'angle-up'}
+                    tooltip={collapsed ? t('Expand chart') : t('Collapse chart')}
+                    onClick={onToggleCollapsed}
+                />
             </div>
-            <div
-                className={css`
-                    height: 300px;
-                `}
-            >
-                <ReactECharts option={options} ref={ReactEChartsInstance}></ReactECharts>
-            </div>
+            {!collapsed && (
+                <div
+                    className={css`
+                        height: ${height}px;
+                    `}
+                >
+                    <ReactECharts option={options} ref={ReactEChartsInstance} style={{ height: '100%' }} />
+                </div>
+            )}
         </div>
     );
 }

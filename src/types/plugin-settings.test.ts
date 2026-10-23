@@ -10,4 +10,9 @@ describe('plugin settings', () => {
     expect(normalizeApplicationAttributeKey('  k8s.pod.label.app  ')).toBe('k8s.pod.label.app');
     expect(mergeLogsConfig({ applicationAttributeKey: '  service.name ' }).applicationAttributeKey).toBe('service.name');
   });
+
+  it('preserves an explicitly cleared application resource attribute key', () => {
+    expect(normalizeApplicationAttributeKey('   ')).toBe('');
+    expect(mergeLogsConfig({ applicationAttributeKey: '' }).applicationAttributeKey).toBe('');
+  });
 });

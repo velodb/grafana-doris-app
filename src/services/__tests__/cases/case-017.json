@@ -1,0 +1,8 @@
+{
+    "name": "VARIANT nested prefix uses phrase prefix",
+    "lucene": "attrs.http.url:http://fron*",
+    "expectedSql": "SELECT * FROM `logs`.`otel_traces` WHERE (`attrs`['http']['url'] MATCH_PHRASE_PREFIX 'http://fron')",
+    "databaseName": "logs",
+    "tableName": "otel_traces",
+    "columns": { "attrs": { "name": "attrs", "normalizedType": "Variant", "columnType": "variant" } }
+}

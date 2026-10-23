@@ -1,3 +1,4 @@
+import { t } from 'i18n';
 export function toError(value: unknown): Error {
   if (value instanceof Error) {
     return value;
@@ -14,5 +15,5 @@ export function toError(value: unknown): Error {
     }
   }
 
-  return new Error('Unknown error');
+  return new Error(t('Unknown error'));
 }

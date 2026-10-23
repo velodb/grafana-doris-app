@@ -1,3 +1,4 @@
+import { t } from 'i18n';
 import { AutoInterval } from 'types/type';
 import pluginJson from './plugin.json';
 import { Dayjs } from 'dayjs';
@@ -24,8 +25,8 @@ export enum IntervalEnum {
     Second = 'second',
 }
 
-export const DEFAULT_SERVICE = { value: 'all', label: 'ALL' };
-export const DEFAULT_OPERATION = { value: 'all', label: 'ALL' };
+export const DEFAULT_SERVICE = { value: 'all', get label() { return t('All'); } };
+export const DEFAULT_OPERATION = { value: 'all', get label() { return t('All'); } };
 
 export const AUTO_INTERVALS = [
     {
@@ -234,14 +235,14 @@ export function getAutoInterval(currentDate: [Dayjs, Dayjs]): AutoInterval {
 }
 
 export function translationDateIntervalType(type: IntervalEnum): string {
-    if (type === 'auto') {return 'Auto';}
-    else if (type === 'second') {return 'Second';}
-    else if (type === 'minute') {return 'Minute';}
-    else if (type === 'hour') {return 'Hour';}
-    else if (type === 'day') {return 'Day';}
-    else if (type === 'week') {return 'Week';}
-    else if (type === 'month') {return 'Month';}
+    if (type === 'auto') {return t('Auto');}
+    else if (type === 'second') {return t('Second');}
+    else if (type === 'minute') {return t('Minute');}
+    else if (type === 'hour') {return t('Hour');}
+    else if (type === 'day') {return t('Day');}
+    else if (type === 'week') {return t('Week');}
+    else if (type === 'month') {return t('Month');}
 
-    return 'Year';
+    return t('Year');
 }
 

@@ -1,0 +1,87 @@
+name: doris-oidc-lab
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.3@sha256:29be7252db0a106f1cd2ac17b9a56ff2668073da645638a38b9fc67deeb2d6c4
+    command: [start-dev, '--hostname=http://${PUBLIC_HOST:-localhost}:${KEYCLOAK_PORT:-31880}']
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Run prepare.sh first}
+      KC_HTTP_PORT: '8080'
+    ports: ['127.0.0.1:${KEYCLOAK_PORT:-31880}:8080']
+    volumes: [keycloak-data:/opt/keycloak/data]
+    restart: unless-stopped
+  doris:
+    image: apache/doris:all-in-one-4.1.3@sha256:82a5cabc7900ebcd3d080412d636c0cebd6602799fffe2605c652b2ea7d42609
+    environment:
+      FE_HEAP: 2048m
+      START_TIMEOUT: '240'
+      FE_CONFIG_EXTRA: |
+        experimental_enable_ssl = true
+        ssl_trust_store_type = PKCS12
+        ssl_force_client_auth = false
+        mysql_ssl_default_ca_certificate = /lab-tls/ca.p12
+        mysql_ssl_default_ca_certificate_password = ${TLS_STORE_PASSWORD:?Run prepare.sh first}
+        mysql_ssl_default_server_certificate = /lab-tls/server.p12
+        mysql_ssl_default_server_certificate_password = ${TLS_STORE_PASSWORD}
+    ports: ['127.0.0.1:${DORIS_PORT:-31930}:9030']
+    volumes:
+      - doris-meta:/opt/apache-doris/fe/doris-meta
+      - doris-storage:/opt/apache-doris/be/storage
+      - ./enterprise-plugins:/opt/apache-doris/fe/plugins/authentication/oidc:ro
+      - ./tls:/lab-tls:ro
+      - ./fe-custom.conf:/opt/apache-doris/fe/conf/fe_custom.conf:ro
+    ulimits:
+      nofile: {soft: 65536, hard: 65536}
+    healthcheck:
+      test: [CMD-SHELL, 'test -f /opt/apache-doris/.ready']
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+    restart: unless-stopped
+  grafana:
+    image: dogstack/dog-stack-grafana:20261013@sha256:cffeffaa1dd3efceed1db335a33470ef594b68eb662a3227de5bf9665f2e9b9d
+    ports: ['127.0.0.1:${GRAFANA_PORT:-31830}:3000', '127.0.0.1:${JWKS_PORT:-31899}:8999']
+    environment:
+      GF_SERVER_ROOT_URL: http://${PUBLIC_HOST:-localhost}:${GRAFANA_PORT:-31830}
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Run prepare.sh first}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_USERS_AUTO_ASSIGN_ORG_ROLE: Viewer
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      GF_AUTH_GENERIC_OAUTH_ENABLED: 'true'
+      GF_AUTH_GENERIC_OAUTH_NAME: Keycloak
+      GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: 'true'
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: grafana
+      GF_AUTH_GENERIC_OAUTH_SCOPES: openid profile email
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: http://${PUBLIC_HOST:-localhost}:${KEYCLOAK_PORT:-31880}/realms/company/protocol/openid-connect/auth
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: http://keycloak:8080/realms/company/protocol/openid-connect/token
+      GF_AUTH_GENERIC_OAUTH_API_URL: http://keycloak:8080/realms/company/protocol/openid-connect/userinfo
+      GF_AUTH_GENERIC_OAUTH_ID_TOKEN_ATTRIBUTE_NAME: id_token
+      GF_AUTH_GENERIC_OAUTH_USE_REFRESH_TOKEN: 'true'
+      GF_AUTH_GENERIC_OAUTH_USE_PKCE: 'true'
+      GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH: preferred_username
+      GF_AUTH_GENERIC_OAUTH_NAME_ATTRIBUTE_PATH: name
+      GF_AUTH_GENERIC_OAUTH_EMAIL_ATTRIBUTE_PATH: email
+      GF_AUTH_GENERIC_OAUTH_GROUPS_ATTRIBUTE_PATH: groups
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "contains(groups[*], '/grafana-admins') && 'Admin' || 'Viewer'"
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: velodb-doris-app,velodb-doris-datasource
+      GF_PLUGINS_FORWARD_HOST_ENV_VARS: velodb-doris-datasource
+      GF_PLUGINS_PREINSTALL_DISABLED: 'true'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+      VELODB_DORIS_SSO_SIGNING_KEY_FILE: /run/secrets/doris-sso.pem
+      VELODB_DORIS_SSO_ISSUER: http://${PUBLIC_HOST:-localhost}:${JWKS_PORT:-31899}
+      VELODB_DORIS_SSO_JWKS_PUBLIC_URL: http://grafana:8999/.well-known/jwks.json
+      VELODB_DORIS_SSO_JWKS_LISTEN_ADDR: :8999
+      VELODB_DORIS_SSO_ALLOW_INSECURE_HTTP: 'true'
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./provisioning/doris-app.yaml:/etc/grafana/provisioning/plugins/doris-app.yaml:ro
+      - ./plugins/velodb-doris-app:/var/lib/grafana/plugins/velodb-doris-app:ro
+      - ./secrets/doris-sso.pem:/run/secrets/doris-sso.pem:ro
+    restart: unless-stopped
+volumes:
+  keycloak-data:
+  doris-meta:
+  doris-storage:
+  grafana-data:

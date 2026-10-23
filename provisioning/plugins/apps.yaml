@@ -8,5 +8,11 @@ apps:
     pinned: true
     jsonData:
       apiUrl: http://default-url.com
+      logsConfig:
+        datasource: velodb-doris-sso
+        database: otel
+        logsTable: otel_logs
+        targetTraceTable: otel_logs
+        applicationAttributeKey: app
     secureJsonData:
       apiKey: secret-key

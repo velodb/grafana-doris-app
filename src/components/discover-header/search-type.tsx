@@ -1,3 +1,4 @@
+import { t } from 'i18n';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import React from 'react';
 import { currentIndexAtom, disabledOptionsAtom, indexesAtom, searchTypeAtom, searchValueAtom, selectedIndexesAtom } from 'store/discover';
@@ -40,7 +41,7 @@ export default function SearchType() {
                 />
                 {indexes && searchMode ? (
                     <div className="mt-4">
-                        <MultiSelect
+                        <MultiSelect placeholder={t('Choose')}
                             options={indexes.filter((item: any) => item.type === 'INVERTED')}
                             value={currentIndex}
                             onChange={(item: Array<SelectableValue<any>>, actionMeta: ActionMeta) => {

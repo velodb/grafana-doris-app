@@ -1,0 +1,80 @@
+{
+  "realm": "velodb",
+  "enabled": true,
+  "displayName": "VeloDB OIDC test realm",
+  "roles": {
+    "realm": [
+      { "name": "doris-readers", "description": "Read-only Doris users" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "grafana-keycloak-local",
+      "name": "Grafana Doris local",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KEYCLOAK_GRAFANA_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:3003/login/generic_oauth"],
+      "webOrigins": ["http://localhost:3003"],
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "full.path": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "groups",
+            "jsonType.label": "String"
+          }
+        }
+      ],
+      "defaultClientScopes": ["profile", "email", "roles", "web-origins", "acr"],
+      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt"]
+    }
+  ],
+  "users": [
+    {
+      "username": "doris.keycloak.tester",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "doris.keycloak.tester@local.test",
+      "firstName": "Doris",
+      "lastName": "Keycloak Tester",
+      "credentials": [{"type": "password", "value": "${KEYCLOAK_TEST_USER_PASSWORD}", "temporary": false}],
+      "realmRoles": ["doris-readers"],
+      "groups": ["/doris-readers"]
+    },
+    {
+      "username": "doris.keycloak.writer",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "doris.keycloak.writer@local.test",
+      "firstName": "Doris",
+      "lastName": "Keycloak Writer",
+      "credentials": [{"type": "password", "value": "${KEYCLOAK_TEST_USER_PASSWORD}", "temporary": false}],
+      "groups": ["/doris-writers"]
+    },
+    {
+      "username": "doris.keycloak.multi",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "doris.keycloak.multi@local.test",
+      "firstName": "Doris",
+      "lastName": "Keycloak Multi",
+      "credentials": [{"type": "password", "value": "${KEYCLOAK_TEST_USER_PASSWORD}", "temporary": false}],
+      "groups": ["/doris-readers", "/doris-writers"]
+    }
+  ],
+  "groups": [
+    {"name": "doris-readers"},
+    {"name": "doris-writers"}
+  ]
+}

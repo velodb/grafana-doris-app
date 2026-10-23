@@ -1,12 +1,45 @@
+import { t } from 'i18n';
 import * as lucene from '@hyperdx/lucene';
 import { logWarning } from '@grafana/runtime';
-import { decodeSpecialTokens, encodeSpecialTokens } from './tokenUtils';
+import { decodeSpecialTokens, encodeSpecialTokens, encodeVariantLiteralFieldPaths, normalizeLuceneSingleQuotedValues } from './tokenUtils';
 import { IMPLICIT_FIELD } from './constants';
 import { EnglishSerializer, Serializer } from './serializers';
 import { toError } from 'utils/errors';
 
 export function parse(query: string): lucene.AST {
-    return lucene.parse(encodeSpecialTokens(query));
+    return lucene.parse(encodeSpecialTokens(encodeVariantLiteralFieldPaths(normalizeLuceneSingleQuotedValues(query))));
+}
+
+/**
+ * SEARCH's Lucene mode can preserve explicit text field queries, but it does
+ * not replace this parser's typed comparisons, ranges, existence checks, or
+ * implicit-field expansion. Keep those on the SQL serializer path.
+ */
+export function canUseDorisSearch(ast: lucene.AST | lucene.Node): boolean {
+    const candidate = ast as any;
+    if (candidate.term != null) {
+        const field = String(candidate.field ?? '');
+        const term = String(candidate.term ?? '');
+        return Boolean(field && field !== IMPLICIT_FIELD && !field.startsWith('-') &&
+            !field.includes('[') && !field.includes(']') &&
+            !candidate.regex && candidate.similarity == null && candidate.proximity == null && candidate.boost == null &&
+            !term.includes('?') && term !== '*' &&
+            (candidate.quoted || !/^(?:[<>]=?|\d|true\b|false\b)/iu.test(term)));
+    }
+
+    if (candidate.inclusive != null || candidate.term_min != null) {
+        return false;
+    }
+    if (candidate.right != null) {
+        return (candidate.operator === 'AND' || candidate.operator === 'OR' || candidate.operator === '&&' || candidate.operator === '||') &&
+            canUseDorisSearch(candidate.left) && canUseDorisSearch(candidate.right);
+    }
+    if (candidate.left != null) {
+        // Unary negation and leading modifiers have different semantics in
+        // Doris Lucene mode, so only accept a plain single child.
+        return candidate.start === undefined && canUseDorisSearch(candidate.left);
+    }
+    return false;
 }
 
 async function nodeTerm(node: lucene.Node, serializer: Serializer): Promise<string> {
@@ -16,6 +49,21 @@ async function nodeTerm(node: lucene.Node, serializer: Serializer): Promise<stri
 
     if ((node as lucene.NodeTerm).term != null) {
         const nodeTermInstance = node as lucene.NodeTerm;
+        if (nodeTermInstance.regex) {
+            throw new Error(t('Lucene regular-expression queries are not supported.'));
+        }
+        if (nodeTermInstance.similarity != null) {
+            throw new Error(t('Lucene fuzzy queries are not supported.'));
+        }
+        if (nodeTermInstance.proximity != null) {
+            throw new Error(t('Lucene proximity queries are not supported.'));
+        }
+        if (nodeTermInstance.boost != null) {
+            throw new Error(t('Lucene boost queries are not supported.'));
+        }
+        if (nodeTermInstance.term.includes('?')) {
+            throw new Error(t('Lucene single-character wildcards (?) are not supported.'));
+        }
         let term = decodeSpecialTokens(nodeTermInstance.term);
         if (isImplicitField && nodeTermInstance.prefix === '-') {
             isNegatedField = true;
@@ -24,6 +72,9 @@ async function nodeTerm(node: lucene.Node, serializer: Serializer): Promise<stri
             term = nodeTermInstance.prefix + decodeSpecialTokens(nodeTermInstance.term);
         }
 
+        if (field === '_exists_') {
+            return serializer.isNotNull(term, isNegatedField);
+        }
         if (nodeTermInstance.quoted && !isImplicitField) {
             return serializer.eq(field, term, isNegatedField);
         }
@@ -76,7 +127,7 @@ async function nodeTerm(node: lucene.Node, serializer: Serializer): Promise<stri
         return serializer.range(field, rangedTerm.term_min, rangedTerm.term_max, isNegatedField);
     }
 
-    throw new Error(`Unexpected Node type. ${node}`);
+    throw new Error(t('Unexpected Node type. {{node}}', { node }));
 }
 
 async function serialize(ast: lucene.AST | lucene.Node, serializer: Serializer): Promise<string> {

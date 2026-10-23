@@ -25,4 +25,5 @@ jobs:
         with:
           policy_token: ${{ secrets.GRAFANA_ACCESS_POLICY_TOKEN }}
           node-version: '22'
+          backend-target: buildAll
           attestation: true

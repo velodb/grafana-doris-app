@@ -1,18 +1,20 @@
+import { t } from 'i18n';
+import { formatDorisTime } from 'utils/time';
 import React, { useMemo } from 'react';
 import { Select, useTheme2, Pagination } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { TraceItem } from './trace-item';
 import ReactECharts from 'echarts-for-react';
 import { useAtom, useAtomValue } from 'jotai';
-import { pageAtom, pageSizeAtom } from 'store/discover';
+import { pageAtom, pageSizeAtom, timeZoneAtom } from 'store/discover';
 import { currentSortAtom } from 'store/traces';
 import TraceDetail from 'components/trace-detail';
 
-export const TraceView: React.FC<any> = React.memo(({ traces: propTraces, onSortByChange }) => {
+export const TraceView: React.FC<any> = React.memo(({ traces: propTraces, total = 0, onSortByChange, onPageChange }) => {
     const theme = useTheme2();
     const [page, setPage] = useAtom(pageAtom);
     const pageSize = useAtomValue(pageSizeAtom);
-    const total = propTraces[0]?.total || 0;
+    const timeZone = useAtomValue(timeZoneAtom);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const traces: any[] = propTraces || [];
     const [sort, setSort] = useAtom(currentSortAtom);
@@ -48,10 +50,10 @@ export const TraceView: React.FC<any> = React.memo(({ traces: propTraces, onSort
                         ">
                       <div style="padding-bottom: 4px; border-bottom: 1px solid ${theme.isLight ? '#DFDFE0' : '#3F3F45'};">${[params.name]}</div>
                       <div style="padding-top:4px;display: flex;justify-content: space-between;"><span>Durations：</span><span style="font-family:DIN Alternate;font-size:14;font-weight:500;">${[
-                          `${params.value} ms` || 'No Data',
+                          `${params.value} ms` || t('No Data'),
                       ]}</span></div>
                       <div style="padding-top:4px;display: flex;justify-content: space-between;"><span>Spans：</span><span style="font-family:DIN Alternate;font-size:14;font-weight:500;">${[
-                          params.data.spans || 'No Data',
+                          params.data.spans || t('No Data'),
                       ]}</span></div>
                   </div>`;
                     return html;
@@ -59,13 +61,13 @@ export const TraceView: React.FC<any> = React.memo(({ traces: propTraces, onSort
             },
             xAxis: {
                 type: 'category',
-                name: 'Time',
-                data: traces.map(s => s.time),
+                name: t('Time'),
+                data: traces.map(s => formatDorisTime(Number(s.time) * 1000, timeZone)),
                 axisLabel: { color: theme.colors.text.primary },
             },
             yAxis: {
                 type: 'value',
-                name: 'Duration (ms)',
+                name: t('Duration (ms)'),
                 axisLabel: { color: theme.colors.text.primary },
                 axisLine: { lineStyle: { color: theme.colors.text.secondary } },
             },
@@ -77,7 +79,7 @@ export const TraceView: React.FC<any> = React.memo(({ traces: propTraces, onSort
                 },
             ],
         };
-    }, [seriesData, traces, theme]);
+    }, [seriesData, traces, theme, timeZone]);
 
     const onEvents = {
         click: (params: any) => {
@@ -121,14 +123,14 @@ export const TraceView: React.FC<any> = React.memo(({ traces: propTraces, onSort
                         align-items: center;
                     `}
                 >
-                    <span>Sort:</span>
-                    <Select
+                    <span>{t('Sort:')}</span>
+                    <Select placeholder={t('Choose')}
                         options={[
-                            { label: 'Most Recent', value: 'most-recent' },
-                            { label: 'Longest Duration', value: 'longest-duration' },
-                            { label: 'Shortest Duration', value: 'shortest-duration' },
-                            { label: 'Most Spans', value: 'most-spans' },
-                            { label: 'Least Spans', value: 'least-spans' },
+                            { label: t('Most Recent'), value: 'most-recent' },
+                            { label: t('Longest Duration'), value: 'longest-duration' },
+                            { label: t('Shortest Duration'), value: 'shortest-duration' },
+                            { label: t('Most Spans'), value: 'most-spans' },
+                            { label: t('Least Spans'), value: 'least-spans' },
                         ]}
                         value={sort}
                         onChange={option => {
@@ -157,10 +159,10 @@ export const TraceView: React.FC<any> = React.memo(({ traces: propTraces, onSort
                         gap: 8px;
                     `}
                 >
-                    <div>{traces.length} Traces, </div>
-                    <div>Total {total}</div>
+                    <div>{t('{{count}} traces', { count: traces.length })}</div>
+                    <div>{t('Total {{count}}', { count: total })}</div>
                 </h3>
-                <Pagination currentPage={page} numberOfPages={Math.ceil(total / pageSize) || 1} onNavigate={toPage => setPage(toPage)} />
+                <Pagination currentPage={page} numberOfPages={Math.ceil(total / pageSize) || 1} onNavigate={toPage => { setPage(toPage); onPageChange?.(toPage); }} />
             </div>
 
             {/* Trace List */}
@@ -173,8 +175,8 @@ export const TraceView: React.FC<any> = React.memo(({ traces: propTraces, onSort
             >
                 {traces.map(trace => (
                     <TraceItem
-                        key={trace.id}
-                        trace={trace}
+                        key={trace.trace_id}
+                        trace={{ ...trace, time: formatDorisTime(Number(trace.time) * 1000, timeZone) }}
                         onClick={() => {
                             setTraceId(trace.trace_id);
                             setDrawerOpen(true);

@@ -1,3 +1,4 @@
+import { t } from 'i18n';
 import React from 'react';
 import { useTheme2 } from '@grafana/ui';
 import { css } from '@emotion/css';
@@ -102,7 +103,7 @@ export const TraceItem: React.FC<TraceItemProps> = ({ trace, onClick }) => {
                             gap: ${theme.spacing(1)};
                         `}
                     >
-                        <span>{trace.spans} Spans</span>
+                        <span>{t('{{count}} spans', { count: trace.spans })}</span>
                         <div
                             className={css`
                                 display: flex;

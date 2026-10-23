@@ -1,0 +1,8 @@
+{
+    "name": "VARIANT nested numeric comparison casts to BIGINT",
+    "lucene": "attrs.http.status_code:>400",
+    "expectedSql": "SELECT * FROM `logs`.`otel_traces` WHERE (TRY_CAST(`attrs`['http']['status_code'] AS BIGINT) > CAST('400' AS BIGINT))",
+    "databaseName": "logs",
+    "tableName": "otel_traces",
+    "columns": { "attrs": { "name": "attrs", "normalizedType": "Variant", "columnType": "variant" } }
+}

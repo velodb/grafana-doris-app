@@ -1,12 +1,60 @@
 import { css } from '@emotion/css';
 import styled from '@emotion/styled';
+import { Field } from '@grafana/ui';
+
+export const DiscoverHeaderField = styled(Field)`
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    min-width: 0;
+    max-width: 100%;
+
+    /* Grafana 10 renders a label directly; newer versions wrap it in a div. */
+    > label,
+    > div:first-child:not(:last-child) {
+        margin: 0;
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+
+    > div:last-child {
+        flex: 1;
+        min-width: 0;
+    }
+`;
+
+export const DiscoverHeaderActions = styled.div`
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+`;
+
+export const DiscoverHeaderControls = styled.div`
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+
+    > div {
+        margin-bottom: 0;
+    }
+`;
 
 export const DiscoverHeaderSearch = styled.div`
-    flex: 2;
     display: flex;
-    border-radius: 6px;
+    flex-wrap: wrap;
     align-items: center;
-    margin-right: 8px;
+    gap: 8px;
+    min-width: 0;
+
+    > div {
+        margin-bottom: 0;
+    }
     .ant-select-open {
         .ant-select-arrow {
             .anticon {
@@ -46,7 +94,7 @@ export const CascaderStyle = css`
     .ant-select-selection-item {
         margin-top: 2px;
     }
-    .ant-select-selector>.ant-select-selection-search>.ant-select-selection-search-input {
+    .ant-select-selector > .ant-select-selection-search > .ant-select-selection-search-input {
         margin-left: 1.8rem;
     }
 `;

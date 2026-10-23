@@ -1,25 +1,27 @@
-import React, { useRef, useState } from 'react';
-import { DiscoverFilterWrapper } from './discover-filter.style';
-import { useTranslation } from 'react-i18next';
-import { useAtom } from 'jotai';
-import { FilterContent } from './filter-content';
-import { surroundingDataFilterAtom } from 'store/discover';
+import { getFilterDisplayLabel } from 'components/discover-header/application-filter';
+import { t } from 'i18n';
+import React from 'react';
+import { DiscoverFilterWrapper } from 'components/discover-filter/discover-filter.style';
+import { useAtomValue } from 'jotai';
+import { dataFilterAtom, tableFieldsAtom, variantFieldsAtom } from 'store/discover';
 import { getFilterSQL } from 'utils/data';
+import { enrichStructuredFilterTypes } from 'utils/sql-filter';
+import { flattenVariantLeaves } from 'utils/variant-fields';
 import { css } from '@emotion/css';
-import { Badge, Icon, IconButton, Toggletip, useTheme2 } from '@grafana/ui';
-import { DiscoverFilterProps } from '../types';
+import { Badge, Checkbox, useTheme2 } from '@grafana/ui';
 
-export default function SurroundingDiscoverFilter(props: DiscoverFilterProps) {
-    const [surroundingDataFilter, setSurroundingDataFilter] = useAtom(surroundingDataFilterAtom);
-    const [open, setOpen] = useState<boolean>(false);
-    const [dataFilterOpen, setDataFilterOpen] = useState<any>({});
-    const discoverFilterRef = useRef(null);
-    const { t } = useTranslation();
+/** Optional, read-only projection of the main Discover filters. */
+export default function SurroundingDiscoverFilter({ enabled, onEnabledChange }: {
+    enabled: boolean;
+    onEnabledChange: (enabled: boolean) => void;
+}) {
+    const dataFilter = useAtomValue(dataFilterAtom);
+    const tableFields = useAtomValue(tableFieldsAtom);
+    const variantFields = useAtomValue(variantFieldsAtom);
     const theme = useTheme2();
 
     return (
         <DiscoverFilterWrapper
-            ref={discoverFilterRef}
             className={css`
                 background-color: ${theme.isDark ? 'rgb(24, 27, 31)' : '#FFF'};
                 padding: 1rem;
@@ -28,9 +30,17 @@ export default function SurroundingDiscoverFilter(props: DiscoverFilterProps) {
                 border-radius: 0 0 0.25rem 0.25rem;
             `}
         >
-            <div className="text-xs font-medium">{t`Filter`}</div>
-            <div className="filter-tag">
-                {surroundingDataFilter.map((dataFilterValue, index) => {
+            <Checkbox
+                label={t('Filter')}
+                checked={enabled}
+                onChange={event => onEnabledChange(event.currentTarget.checked)}
+            />
+            <div className="filter-tag" style={{ opacity: enabled ? 1 : 0.5 }}>
+                {dataFilter.map((dataFilterValue, index) => {
+                    const displayFilter = enrichStructuredFilterTypes(
+                        [dataFilterValue],
+                        [...tableFields, ...flattenVariantLeaves(variantFields)],
+                    )[0];
                     return (
                         <div
                             key={index.toString()}
@@ -38,92 +48,14 @@ export default function SurroundingDiscoverFilter(props: DiscoverFilterProps) {
                                 margin-left: 8px;
                             `}
                         >
-                            <Toggletip
-                                show={dataFilterOpen[dataFilterValue.id]}
-                                onOpen={() => {
-                                    setDataFilterOpen({
-                                        ...dataFilterOpen,
-                                        [dataFilterValue.id]: true,
-                                    });
-                                }}
-                                onClose={() => {
-                                    setDataFilterOpen({
-                                        ...dataFilterOpen,
-                                        [dataFilterValue.id]: false,
-                                    });
-                                }}
-                                closeButton={true}
-                                content={
-                                    <FilterContent
-                                        onHide={() => {
-                                            setDataFilterOpen({
-                                                ...dataFilterOpen,
-                                                [dataFilterValue.id]: false,
-                                            });
-                                        }}
-                                        dataFilterValue={dataFilterValue}
-                                    />
-                                }
-                                placement="bottom"
-                            >
-                                <div>
-                                    <Badge
-                                        key={index}
-                                        text={
-                                            <div
-                                                className={css`
-                                                    display: flex;
-                                                    align-items: center;
-                                                    justify-content: space-between;
-                                                `}
-                                            >
-                                                <span>{dataFilterValue.label ? <span>{dataFilterValue.label}</span> : <span>{getFilterSQL(dataFilterValue)}</span>}</span>
-                                                <div
-                                                    className={css`
-                                                        margin-left: 0.5rem;
-                                                        cursor: pointer;
-                                                    `}
-                                                    onClick={() => {
-                                                        const data_filters = surroundingDataFilter.filter(e => e !== dataFilterValue) || [];
-                                                        setSurroundingDataFilter(data_filters);
-                                                        // setLoc(prev => {
-                                                        //     const searchParams = prev.searchParams;
-                                                        //     searchParams?.set('data_filters', JSON.stringify(data_filters));
-                                                        //     return {
-                                                        //         ...prev,
-                                                        //         searchParams,
-                                                        //     };
-                                                        // });
-                                                    }}
-                                                >
-                                                    <Icon name="times" />
-                                                </div>
-                                            </div>
-                                        }
-                                        color="blue"
-                                    ></Badge>
-                                </div>
-                            </Toggletip>
+                            <Badge
+                                key={index}
+                                text={getFilterDisplayLabel(dataFilterValue) || getFilterSQL(displayFilter)}
+                                color="blue"
+                            />
                         </div>
                     );
                 })}
-                <Toggletip
-                    show={open}
-                    closeButton={false}
-                    onOpen={() => {
-                        setOpen(true);
-                    }}
-                    content={
-                        <FilterContent
-                            onHide={() => {
-                                setOpen(false);
-                            }}
-                        />
-                    }
-                    placement="bottom"
-                >
-                    <IconButton name="plus" tooltip="Add filter" style={{ marginLeft: 10 }} />
-                </Toggletip>
             </div>
         </DiscoverFilterWrapper>
     );

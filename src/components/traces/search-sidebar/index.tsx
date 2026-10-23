@@ -1,4 +1,5 @@
 'use client';
+import { t } from 'i18n';
 
 import React, { useEffect } from 'react';
 import { HelpCircle } from 'lucide-react';
@@ -29,30 +30,30 @@ export function SearchSidebar(props: {
     const [maxDuration, setMaxDuration] = useAtom(maxDurationAtom);
 
     useEffect(() => {
-        setCurrentService({ value: 'all', label: 'ALL' });
+        setCurrentService({ value: 'all', label: t('All') });
     }, [currentTimeField, setCurrentService]);
 
     return (
         <div className="space-y-6">
             <div className="space-y-4">
                 <div>
-                    <Field label="Service" style={{ marginLeft: 8 }}>
-                        <Select
+                    <Field label={t('Service')} style={{ marginLeft: 8 }}>
+                        <Select placeholder={t('Choose')}
                             width={15}
                             options={tracesServices}
                             value={currentService}
                             onChange={(selectedService: any) => {
                                 // Handle service change
                                 setCurrentService(selectedService);
-                                setCurrentOperation({ value: 'all', label: 'ALL' });
+                                setCurrentOperation({ value: 'all', label: t('All') });
                             }}
                         ></Select>
                     </Field>
                 </div>
 
                 <div>
-                    <Field label="Operation" style={{ marginLeft: 8 }}>
-                        <Select
+                    <Field label={t('Operation')} style={{ marginLeft: 8 }}>
+                        <Select placeholder={t('Choose')}
                             width={15}
                             options={traceOperations}
                             value={currentOperation}
@@ -75,16 +76,15 @@ export function SearchSidebar(props: {
                                     align-items: center;
                                 `}
                             >
-                                Tags
-                                <Tooltip title={<div>
-                                    Filter traces using <a className={css`font-weight:500px;color:#3D71D9;`} href='https://brandur.org/logfmt' target='_blank' rel="noreferrer">logfmt</a> syntax:
+                                {t('Tags')}<Tooltip title={<div>
+                                    {t('Filter traces using')} <a className={css`font-weight:500px;color:#3D71D9;`} href='https://brandur.org/logfmt' target='_blank' rel="noreferrer">logfmt</a> {t('syntax:')}
                                     <br />
                                     <ul className={css`list-style-type: disc;list-style-position: inside;`}>
-                                        <li>Equality: http.status_code=200</li>
-                                        <li>Inequality: error!=true</li>
-                                        <li>Contains: message~=&quot;timeout&quot;</li>
-                                        <li>Multiple (AND): method=POST duration&gt;1000</li>
-                                        <li>OR conditions: error=true OR status&gt;=500</li>
+                                        <li>{t('Equality: http.status_code=200')}</li>
+                                        <li>{t('Inequality: error!=true')}</li>
+                                        <li>{t('Contains: message~="timeout"')}</li>
+                                        <li>{t('Multiple (AND): method=POST duration>1000')}</li>
+                                        <li>{t('OR conditions: error=true OR status>=500')}</li>
                                     </ul>
                                 </div>}>
                                     <HelpCircle
@@ -114,10 +114,10 @@ export function SearchSidebar(props: {
 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <Field label="Min Duration" style={{ marginLeft: 8 }}>
+                        <Field label={t('Min Duration')} style={{ marginLeft: 8 }}>
                             <Input
                                 id="min-duration"
-                                placeholder="e.g. 1.2s, 100ms, 500us"
+                                placeholder={t('e.g. 1.2s, 100ms, 500us')}
                                 className="mt-1"
                                 value={minDuration}
                                 onChange={e => {
@@ -128,10 +128,10 @@ export function SearchSidebar(props: {
                         </Field>
                     </div>
                     <div>
-                        <Field label="Max Duration" style={{ marginLeft: 8 }}>
+                        <Field label={t('Max Duration')} style={{ marginLeft: 8 }}>
                             <Input
                                 id="max-duration"
-                                placeholder="e.g. 1.2s, 100ms, 500us"
+                                placeholder={t('e.g. 1.2s, 100ms, 500us')}
                                 className="mt-1"
                                 value={maxDuration}
                                 onChange={e => {
@@ -149,7 +149,7 @@ export function SearchSidebar(props: {
                     }}
                     style={{ marginLeft: 8 }}
                 >
-                    Find Traces
+                    {t('Find Traces')}
                 </Button>
             </div>
         </div>

@@ -26,9 +26,10 @@ describe('DiscoverQueryFeedback', () => {
         );
 
         expect(screen.getByText('Query failed')).toBeInTheDocument();
-        expect(screen.getByText('observability.logs').parentElement).toHaveTextContent('SQL query on observability.logs did not complete.');
+        expect(screen.getByText('SQL query on observability.logs did not complete.')).toHaveTextContent('SQL query on observability.logs did not complete.');
         expect(screen.getByText(/Input location: line 1, column 8/)).toBeInTheDocument();
-        expect(screen.getByText('Backend details and generated SQL')).toBeInTheDocument();
+        expect(screen.getByText('Syntax error at line 1, column 42')).toBeVisible();
+        expect(screen.getByText('Generated SQL')).toBeInTheDocument();
     });
 
     it('shows auxiliary failures as a warning when the result query succeeded', () => {
@@ -52,5 +53,7 @@ describe('DiscoverQueryFeedback', () => {
 
         expect(screen.getByText('Partial query failure')).toBeInTheDocument();
         expect(screen.getByText('histogram failed')).toBeInTheDocument();
+        expect(screen.getByText('timeout')).toBeVisible();
+        expect(screen.queryByText('Generated SQL')).not.toBeInTheDocument();
     });
 });

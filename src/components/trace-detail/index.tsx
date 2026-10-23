@@ -1,3 +1,5 @@
+import { t } from 'i18n';
+import { formatShareTime, buildAbsoluteTimeRange } from 'utils/time';
 import { FieldType, LoadingState, usePluginContext } from '@grafana/data';
 import { PanelRenderer, logError } from '@grafana/runtime';
 import { Drawer, LoadingPlaceholder } from '@grafana/ui';
@@ -5,9 +7,9 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import { useAtom, useAtomValue } from 'jotai';
 import React, { useEffect } from 'react';
-import { FORMAT_DATE, ROUTES } from '../../constants';
+import { ROUTES } from '../../constants';
 import { getTableDataTraceService } from 'services/traces';
-import { currentCatalogAtom, currentDatabaseAtom, tableTracesDataAtom, selectedDatasourceAtom, selectedRowAtom } from 'store/discover';
+import { currentCatalogAtom, currentDatabaseAtom, tableTracesDataAtom, selectedDatasourceAtom, selectedRowAtom, timeZoneAtom } from 'store/discover';
 import { currentTraceTableAtom } from 'store/traces';
 import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
 import { formatTracesResData } from 'utils/data';
@@ -36,6 +38,7 @@ function buildDiscoverLogsUrl(params: {
     database?: string;
     table?: string;
     timeField?: string;
+    timeZone?: string;
     traceId: string;
     spanId?: string;
     serviceName?: string;
@@ -61,13 +64,17 @@ function buildDiscoverLogsUrl(params: {
     searchParams.set('mode', 'Lucene');
     searchParams.set('query', spanScopeQuery.length > 0 ? `${traceQuery} AND (${spanScopeQuery.join(' OR ')})` : traceQuery);
     searchParams.set('timeField', params.timeField || 'timestamp');
-    searchParams.set('startTime', params.start.format(FORMAT_DATE));
-    searchParams.set('endTime', params.end.format(FORMAT_DATE));
+    if (params.timeZone) {
+        searchParams.set('timeZone', params.timeZone);
+    }
+    searchParams.set('startTime', formatShareTime(params.start));
+    searchParams.set('endTime', formatShareTime(params.end));
 
     return `${prefixRoute(ROUTES.Discover)}?${searchParams.toString()}`;
 }
 
 export default function TraceDetail(props: { onClose?: () => void; open: boolean; traceId?: string; traceTable?: string }) {
+    const timeZone = useAtomValue(timeZoneAtom);
     const currentTable = useAtomValue(currentTraceTableAtom);
     const currentCatalog = useAtomValue(currentCatalogAtom);
     const currentDatabase = useAtomValue(currentDatabaseAtom);
@@ -96,6 +103,7 @@ export default function TraceDetail(props: { onClose?: () => void; open: boolean
             database: logsConfig.database || currentDatabase,
             table: logsConfig.logsTable || 'otel_logs',
             timeField: 'timestamp',
+            timeZone,
             traceId,
             spanId,
             serviceName,
@@ -107,7 +115,7 @@ export default function TraceDetail(props: { onClose?: () => void; open: boolean
             {
                 href,
                 content: 'Logs',
-                title: 'Logs for this span',
+                title: t('Logs for this span'),
                 type: 'log',
                 field: {
                     name: 'span_id',
@@ -120,7 +128,7 @@ export default function TraceDetail(props: { onClose?: () => void; open: boolean
                 },
             },
         ];
-    }, [currentDatabase, logsConfig.database, logsConfig.logsTable, props.traceId, selectdbDS?.name, selectdbDS?.uid]);
+    }, [currentDatabase, logsConfig.database, logsConfig.logsTable, props.traceId, selectdbDS?.name, selectdbDS?.uid, timeZone]);
 
     const getTraceData = React.useCallback(() => {
         let payload: any = {
@@ -133,7 +141,7 @@ export default function TraceDetail(props: { onClose?: () => void; open: boolean
         };
         setLoading(true);
 
-        getTableDataTraceService({
+        return getTableDataTraceService({
             selectdbDS,
             ...payload,
         }).subscribe({
@@ -152,31 +160,32 @@ export default function TraceDetail(props: { onClose?: () => void; open: boolean
     }, [currentCatalog, currentDatabase, traceTable, selectdbDS, setTraceData, traceId]);
 
     useEffect(() => {
-        if (traceId) {
-            getTraceData();
+        if (open && traceId) {
+            const subscription = getTraceData();
+            return () => subscription.unsubscribe();
         }
-    }, [selectedRow.trace_id, currentCatalog, currentDatabase, selectdbDS, setTraceData, getTraceData, traceId]);
+        return undefined;
+    }, [selectedRow.trace_id, currentCatalog, currentDatabase, selectdbDS, setTraceData, getTraceData, traceId, open]);
 
     function renderTracePanel() {
         if (traceData) {
+            const starts = traceData.fields.find((field: any) => field.name === 'startTime')?.values || [];
+            const durations = traceData.fields.find((field: any) => field.name === 'duration')?.values || [];
+            const finiteStarts = Array.from(starts as number[]).map(Number).filter(Number.isFinite);
+            const start = finiteStarts.length ? Math.min(...finiteStarts) : Date.now() - 15 * 60 * 1000;
+            const end = finiteStarts.length ? Math.max(...Array.from(starts as number[]).map((value, index) => Number(value) + Number(durations[index] || 0))) : Date.now();
             return (
                 <PanelRenderer
-                    title="trace panel"
+                    title={t('Trace panel')}
                     width={200}
                     height={300}
                     pluginId="traces"
+                    timeZone={timeZone}
                     options={{ createSpanLink }}
                     data={{
                         state: loading ? LoadingState.Loading : LoadingState.Done,
                         series: [traceData],
-                        timeRange: {
-                            from: new Date(Date.now() - 15 * 60 * 1000) as any, // 15 分钟前
-                            to: new Date() as any,
-                            raw: {
-                                from: 'now-15m',
-                                to: 'now',
-                            },
-                        },
+                        timeRange: buildAbsoluteTimeRange(dayjs.utc(start), dayjs.utc(end)),
                     }}
                 />
             );
@@ -188,13 +197,13 @@ export default function TraceDetail(props: { onClose?: () => void; open: boolean
         <>
             {open && (
                 <Drawer
-                    title="Trace Panel"
+                    title={t('Trace Panel')}
                     onClose={() => {
                         props?.onClose?.();
                     }}
                     size="lg"
                 >
-                    {loading ? <LoadingPlaceholder text={`Loading`} /> : renderTracePanel()}
+                    {loading ? <LoadingPlaceholder text={t('Loading')} /> : renderTracePanel()}
                 </Drawer>
             )}
         </>

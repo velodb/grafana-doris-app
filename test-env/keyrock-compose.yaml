@@ -1,0 +1,58 @@
+name: grafana-doris-keyrock
+
+services:
+  keyrock-db:
+    image: mysql:5.7
+    platform: linux/amd64
+    container_name: velodb-keyrock-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: idm
+      MYSQL_ROOT_PASSWORD: ${KEYROCK_DB_PASSWORD}
+    volumes:
+      - keyrock-mysql-8-4:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  keyrock:
+    image: fiware/idm:8.4.0
+    platform: linux/amd64
+    container_name: velodb-keyrock
+    restart: unless-stopped
+    depends_on:
+      keyrock-db:
+        condition: service_healthy
+    ports:
+      - "${KEYROCK_PORT:-3005}:3000"
+    environment:
+      # Use Docker's host gateway as the OIDC issuer so Grafana/Doris
+      # containers can resolve the issuer and JWKS endpoint.
+      IDM_HOST: http://host.docker.internal:${KEYROCK_PORT:-3005}
+      IDM_PORT: "3000"
+      IDM_DB_HOST: keyrock-db
+      IDM_DB_NAME: idm
+      IDM_DB_USER: root
+      IDM_DB_PASS: ${KEYROCK_DB_PASSWORD}
+      IDM_ADMIN_USER: admin
+      IDM_ADMIN_EMAIL: admin@local.test
+      IDM_ADMIN_PASS: ${KEYROCK_ADMIN_PASSWORD}
+      IDM_SESSION_SECRET: ${KEYROCK_SESSION_SECRET}
+      IDM_ENCRYPTION_KEY: ${KEYROCK_ENCRYPTION_KEY}
+      IDM_OIDC_JWT_ALGORITHM: RS256
+    volumes:
+      - ./keyrock-config.js:/opt/fiware-idm/config.js:ro
+      - keyrock-certs-8-4:/opt/fiware-idm/certs
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/version', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+volumes:
+  keyrock-mysql-8-4:
+  keyrock-certs-8-4:

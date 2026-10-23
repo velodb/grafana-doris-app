@@ -1,3 +1,4 @@
+import { t } from 'i18n';
 import React from 'react';
 import { SearchSidebar } from 'components/traces/search-sidebar';
 import { TraceView } from 'components/traces/traces-viewer';
@@ -6,8 +7,8 @@ import { LoadingBar, useTheme2 } from '@grafana/ui';
 import { currentCatalogAtom, currentDatabaseAtom, currentDateAtom, currentTimeFieldAtom, pageAtom, pageSizeAtom, selectedDatasourceAtom } from 'store/discover';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import TracesHeader from 'components/traces/traces-header';
-import { DEFAULT_OPERATION, DEFAULT_SERVICE, FORMAT_DATE } from '../constants';
-import { Dayjs } from 'dayjs';
+import { DEFAULT_OPERATION, DEFAULT_SERVICE } from '../constants';
+import { formatSqlTime } from 'utils/time';
 import {
     currentOperationAtom,
     currentServiceAtom,
@@ -16,13 +17,13 @@ import {
     maxDurationAtom,
     minDurationAtom,
     tagsAtom,
+    tracesCapabilityAtom,
     traceOperationsAtom,
     tracesAtom,
     tracesServicesAtom,
 } from 'store/traces';
-import { convertColumnToRow } from 'utils/data';
 import { PluginPage, logError } from '@grafana/runtime';
-import { getOperationListService, getServiceListService, getTracesService } from 'services/traces';
+import { getOperationListService, getServiceListService, getTracesService, traceCapabilityKey } from 'services/traces';
 import { toDataFrame, usePluginContext } from '@grafana/data';
 import { toError } from 'utils/errors';
 import { mergeLogsConfig, type AppPluginSettings } from 'types/plugin-settings';
@@ -57,7 +58,7 @@ function getErrorText(error: any) {
         error?.response?.data?.message ||
         error?.statusText ||
         error?.message ||
-        'Request failed'
+        t('Request failed')
     );
 }
 
@@ -76,6 +77,19 @@ export default function PageTrace() {
     const [page, setPage] = useAtom(pageAtom);
     const pageSize = useAtomValue(pageSizeAtom);
     const [traces, setTraces] = useAtom(tracesAtom);
+    const [total, setTotal] = React.useState(0);
+    const [capabilities, setCapabilities] = useAtom(tracesCapabilityAtom);
+    const traceGeneration = React.useRef(0);
+    const tableContext = JSON.stringify([selectdbDS?.uid, currentDatabase, currentTable, currentTimeField]);
+    const tableContextRef = React.useRef(tableContext);
+    tableContextRef.current = tableContext;
+    React.useEffect(() => {
+        traceGeneration.current += 1;
+        setTraces([]);
+        setTotal(0);
+        setLoading(false);
+        return () => { traceGeneration.current += 1; };
+    }, [selectdbDS?.uid, currentDatabase, currentTable, setTraces]);
     const setTracesServices = useSetAtom(tracesServicesAtom);
     const setTraceOperations = useSetAtom(traceOperationsAtom);
     const [loading, setLoading] = React.useState(false);
@@ -105,26 +119,26 @@ export default function PageTrace() {
 
     const showTraceSetupError = React.useCallback((action: string) => {
         if (!selectdbDS) {
-            showTraceError(`Cannot ${action}: no Doris datasource is selected. Select a datasource first.`);
+            showTraceError(t('Cannot {{action}}: no Doris datasource is selected. Select a datasource first.', { action: action }));
             return true;
         }
 
         if (!currentDatabase) {
-            showTraceError(`Cannot ${action}: no database is selected. Select a database first.`);
+            showTraceError(t('Cannot {{action}}: no database is selected. Select a database first.', { action: action }));
             return true;
         }
 
         if (!currentTable) {
             showTraceError(
                 hasExplicitTraceTableConfig
-                    ? `Cannot ${action}: the configured trace table "${configuredTraceTable}" is not selected. Switch to that table before querying.`
-                    : `Cannot ${action}: no trace table is selected. Select a trace table, or configure a default trace table in app settings.`,
+                    ? t('Cannot {{action}}: the configured trace table "{{table}}" is not selected. Switch to that table before querying.', { action: action, table: configuredTraceTable })
+                    : t('Cannot {{action}}: no trace table is selected. Select a trace table, or configure a default trace table in app settings.', { action: action }),
             );
             return true;
         }
 
         if (!currentTimeField) {
-            showTraceError(`Cannot ${action}: no time field is selected. Select a time field first.`);
+            showTraceError(t('Cannot {{action}}: no time field is selected. Select a time field first.', { action: action }));
             return true;
         }
 
@@ -132,13 +146,13 @@ export default function PageTrace() {
     }, [configuredTraceTable, currentDatabase, currentTable, currentTimeField, hasExplicitTraceTableConfig, selectdbDS, showTraceError]);
 
     const showTraceQueryError = React.useCallback((err: any, requestKind: TraceRequestKind) => {
-        if (showTraceSetupError(requestKind === 'traces' ? 'query traces' : `load trace ${requestKind}`)) {
+        if (showTraceSetupError(requestKind === 'traces' ? t('query traces') : requestKind === 'services' ? t('load trace services') : t('load trace operations'))) {
             return;
         }
 
         if (hasExplicitTraceTableConfig && currentTable !== configuredTraceTable) {
             showTraceError(
-                `Cannot query traces from "${currentTable}": the configured trace table is "${configuredTraceTable}". Switch to the configured trace table and try again.`,
+                t('Cannot query traces from "{{table}}": the configured trace table is "{{configuredTable}}". Switch to the configured trace table and try again.', { table: currentTable, configuredTable: configuredTraceTable }),
             );
             return;
         }
@@ -147,33 +161,34 @@ export default function PageTrace() {
         const tableContext = `"${currentDatabase}.${currentTable}"`;
 
         if (requestKind === 'services') {
-            showTraceError(`Failed to load trace services from ${tableContext}. Verify the table, time field, and Doris permissions. Backend: ${backendMessage}`);
+            showTraceError(t('Failed to load trace services from {{table}}. Verify the table, time field, and Doris permissions. Backend: {{message}}', { table: tableContext, message: backendMessage }));
             return;
         }
 
         if (requestKind === 'operations') {
-            showTraceError(`Failed to load trace operations from ${tableContext}. Verify the table, time field, service filter, and Doris permissions. Backend: ${backendMessage}`);
+            showTraceError(t('Failed to load trace operations from {{table}}. Verify the table, time field, service filter, and Doris permissions. Backend: {{message}}', { table: tableContext, message: backendMessage }));
             return;
         }
 
         showTraceError(
-            `Trace query failed for ${tableContext}. Verify the trace schema includes required columns such as trace_id, span_id, parent_span_id, span_name, service_name, timestamp, duration, and status_code. Backend: ${backendMessage}`,
+            t('Trace query failed for {{table}}. Verify the trace schema includes required columns such as trace_id, span_id, parent_span_id, span_name, service_name, timestamp, duration, and status_code. Backend: {{message}}', { table: tableContext, message: backendMessage }),
             6,
         );
     }, [configuredTraceTable, currentDatabase, currentTable, hasExplicitTraceTableConfig, showTraceError, showTraceSetupError]);
 
     const getTraces = React.useCallback((nextPage = page, nextSort = sort) => {
-        if (showTraceSetupError('query traces')) {
+        if (showTraceSetupError(t('query traces'))) {
             return;
         }
+        const requestId = ++traceGeneration.current;
         setLoading(true);
         const payload: any = {
             catalog: currentCatalog,
             database: currentDatabase,
             table: currentTable,
             timeField: currentTimeField,
-            startDate: currentDate[0]?.format(FORMAT_DATE),
-            endDate: (currentDate[1] as Dayjs).format(FORMAT_DATE),
+            startDate: currentDate[0] ? formatSqlTime(currentDate[0]) : '',
+            endDate: formatSqlTime(currentDate[1]),
             cluster: '',
             page: nextPage,
             page_size: pageSize,
@@ -192,44 +207,34 @@ export default function PageTrace() {
             payload.tags = tags;
         }
 
-        getTracesService({
-            selectdbDS,
-            ...payload,
-        }, {
+        const capabilityKey = traceCapabilityKey({ selectdbDS: selectdbDS!, database: currentDatabase, table: currentTable });
+        getTracesService({ selectdbDS, ...payload }, {
             showBackendError: false,
+            capability: capabilities[capabilityKey],
+            onCapability: capability => setCapabilities(previous => ({ ...previous, [capabilityKey]: capability })),
         }).subscribe({
-            next: ({ data, ok }: any) => {
-                setLoading(false);
-                const resultError = hasQueryResultError(data);
-                if (!ok || resultError) {
-                    showTraceQueryError({
-                        data,
-                        backendError: resultError?.error,
-                        backendStatus: resultError?.status,
-                        errorSource: resultError?.errorSource,
-                        refId: resultError?.refId,
-                    }, 'traces');
+            next: ({ rows, total: nextTotal }) => {
+                if (traceGeneration.current !== requestId) {
                     return;
                 }
-
-                if (ok) {
-                    const rowsData = convertColumnToRow(data.results.getTraces.frames[0]);
-                    const formateData = rowsData.map((item: any) => {
-                        return {
-                            ...item,
-                            trace_duration_ms: (item.trace_duration_ms as number)?.toFixed(2) || 0,
-                        };
-                    });
-                    setTraces(formateData);
-                }
+                setLoading(false);
+                setTotal(nextTotal);
+                setTraces(rows.map(item => ({ ...item, trace_duration_ms: Number(item.trace_duration_ms || 0).toFixed(2) })));
             },
             error: (err: any) => {
+                if (traceGeneration.current !== requestId) {
+                    return;
+                }
                 setLoading(false);
+                setTraces([]);
+                setTotal(0);
                 logError(toError(err), { source: 'PageTrace', action: 'getTraces' });
                 showTraceQueryError(err, 'traces');
             },
         });
     }, [
+        capabilities,
+        setCapabilities,
         currentCatalog,
         currentDatabase,
         currentTable,
@@ -253,13 +258,14 @@ export default function PageTrace() {
         if (!currentTable || !currentDatabase || !selectdbDS || !currentTimeField) {
             return;
         }
+        const requestedContext = tableContext;
         let payload: any = {
             catalog: currentCatalog,
             database: currentDatabase,
             table: currentTable,
             timeField: currentTimeField,
-            startDate: currentDate[0]?.format(FORMAT_DATE),
-            endDate: (currentDate[1] as Dayjs).format(FORMAT_DATE),
+            startDate: currentDate[0] ? formatSqlTime(currentDate[0]) : '',
+            endDate: formatSqlTime(currentDate[1]),
             cluster: '',
         };
 
@@ -270,7 +276,9 @@ export default function PageTrace() {
             showBackendError: false,
         }).subscribe({
             next: ({ data, ok }: any) => {
-                setLoading(false);
+                if (requestedContext !== tableContextRef.current) {
+                    return;
+                }
                 const resultError = hasQueryResultError(data);
                 if (!ok || resultError) {
                     showTraceQueryError({
@@ -299,25 +307,28 @@ export default function PageTrace() {
                 }
             },
             error: (err: any) => {
-                setLoading(false);
+                if (requestedContext !== tableContextRef.current) {
+                    return;
+                }
                 logError(toError(err), { source: 'PageTrace', action: 'getTracesServices' });
                 showTraceQueryError(err, 'services');
             },
         });
-    }, [currentCatalog, currentDatabase, currentDate, currentTable, currentTimeField, selectdbDS, setTracesServices, showTraceQueryError]);
+    }, [tableContext, currentCatalog, currentDatabase, currentDate, currentTable, currentTimeField, selectdbDS, setTracesServices, showTraceQueryError]);
 
     const getTracesOperations = React.useCallback(() => {
         if (!currentTable || !currentDatabase || !selectdbDS || !currentTimeField) {
             return;
         }
 
+        const requestedContext = tableContext;
         let payload: any = {
             catalog: currentCatalog,
             database: currentDatabase,
             table: currentTable,
             timeField: currentTimeField,
-            startDate: currentDate[0]?.format(FORMAT_DATE),
-            endDate: (currentDate[1] as Dayjs).format(FORMAT_DATE),
+            startDate: currentDate[0] ? formatSqlTime(currentDate[0]) : '',
+            endDate: formatSqlTime(currentDate[1]),
             service_name: currentService.value,
             cluster: '',
         };
@@ -329,7 +340,9 @@ export default function PageTrace() {
             showBackendError: false,
         }).subscribe({
             next: ({ data, ok }: any) => {
-                setLoading(false);
+                if (requestedContext !== tableContextRef.current) {
+                    return;
+                }
                 const resultError = hasQueryResultError(data);
                 if (!ok || resultError) {
                     showTraceQueryError({
@@ -362,13 +375,15 @@ export default function PageTrace() {
                 }
             },
             error: (err: any) => {
-                setLoading(false);
+                if (requestedContext !== tableContextRef.current) {
+                    return;
+                }
                 logError(toError(err), { source: 'PageTrace', action: 'getTracesOperations' });
                 showTraceQueryError(err, 'operations');
             },
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentCatalog, currentDatabase, currentDate, currentService, currentTable, currentTimeField, selectdbDS, setTraceOperations, showTraceQueryError]);
+    }, [tableContext, currentCatalog, currentDatabase, currentDate, currentService, currentTable, currentTimeField, selectdbDS, setTraceOperations, showTraceQueryError]);
 
     return (
         <div
@@ -419,7 +434,7 @@ export default function PageTrace() {
                         </div>
                         <button
                             type="button"
-                            aria-label="Close trace error"
+                            aria-label={t('Close trace error')}
                             onClick={() => setTraceError('')}
                             className={css`
                                 display: inline-flex;
@@ -482,7 +497,7 @@ export default function PageTrace() {
                         `}
                     >
                         {loading && <LoadingBar width={100} />}
-                        <TraceView traces={traces} onSortByChange={(nextSort: string) => getTraces(1, nextSort)} />
+                        <TraceView traces={traces} total={total} onPageChange={(nextPage: number) => { setPage(nextPage); getTraces(nextPage); }} onSortByChange={(nextSort: string) => { setPage(1); getTraces(1, nextSort); }} />
                     </main>
                 </div>
             </PluginPage>

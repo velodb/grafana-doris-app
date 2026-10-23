@@ -223,7 +223,7 @@ const config = async (env: Env): Promise<Configuration> => {
       new ReplaceInFileWebpackPlugin([
         {
           dir: DIST_DIR,
-          files: ['plugin.json', 'README.md'],
+          files: ['plugin.json', 'README.md', 'datasource/plugin.json'],
           rules: [
             {
               search: /\%VERSION\%/g,

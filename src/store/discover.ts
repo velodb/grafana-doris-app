@@ -1,13 +1,14 @@
+import { VariantPathFrequencies } from 'utils/variant-path-cache';
 import { atom } from 'jotai';
 import { atomWithStorage, selectAtom } from 'jotai/utils';
 // import { focusAtom } from 'jotai-optics'
 import { atomWithLocation } from 'jotai-location';
 import { DataSourceInstanceSettings, DataSourceJsonData, dateTime, TimeZone } from '@grafana/data';
 import { Dayjs } from 'dayjs';
-import { DataFilterType, DiscoverCurrent, IntervalEnum, ShortcutItem } from 'types/type';
+import { DataFilterType, DiscoverCurrent, FieldStatisticsField, IntervalEnum, ShortcutItem, TopNConfig } from 'types/type';
 import { AggregatableEnum, DISCOVER_DEFAULT_STATUS, DISCOVER_SHORTCUTS, FieldTypeEnum, SearchableEnum } from 'utils/data';
 import { getGrafanaUserTimeZone } from 'utils/time';
-import { DiscoverColumnLayouts, DiscoverQueryState, DiscoverSort } from 'types/discover';
+import { DiscoverColumnLayouts, DiscoverQueryState, DiscoverSort, FieldStatisticsResult } from 'types/discover';
 
 export const locationAtom = atomWithLocation();
 export const dataFilterAtom = atom<DataFilterType[]>([]);
@@ -36,9 +37,33 @@ export const disabledOptionsAtom = atom<string[]>([]);
 
 export const selectedFieldsAtom = atom<any[]>([]);
 export const tableFieldsAtom = atomWithStorage<any[]>('discover-table-fields', []);
+export const variantMetadataFieldsAtom = atom<any[]>([]);
+// Sample-derived children of physical VARIANT columns. Kept separate so result
+// decoding always uses the physical Doris schema only.
+export const variantFieldsAtom = atom<any[]>([]);
+export const variantImplicitPathsAtom = atomWithStorage<Record<string, Record<string, string[][]>>>('discover-variant-implicit-paths', {});
 export const discoverRowsExpandedAtom = atomWithStorage<boolean>('discover-rows-expanded', false);
+export const discoverRowsWrappedAtom = atomWithStorage<boolean>('discover-rows-wrapped', true);
+export const discoverRowLineCountAtom = atomWithStorage<0 | 1 | 3 | 5>('discover-row-line-count', 3);
 export const discoverColumnLayoutsAtom = atomWithStorage<DiscoverColumnLayouts>('discover-column-layouts', {});
 export const discoverSortAtom = atom<DiscoverSort>({ field: '', direction: 'DESC' });
+export const topNEnabledAtom = atom(false);
+export const topNConfigAtom = atom<TopNConfig>({
+    groupField: '', metric: 'COUNT', metricField: '', direction: 'DESC', limit: 5,
+});
+export const topNPreferencesAtom = atomWithStorage<Record<string, TopNConfig>>('discover-top-n-preferences-v1', {}, undefined, { getOnInit: true });
+export const topNResultFieldsAtom = atom<Array<{ Field: string; Type: string }>>([]);
+export const topNRowsAtom = atom<Array<Record<string, any>>>([]);
+/** Increments when a field-side Top N action should execute immediately. */
+export const topNRunRequestAtom = atom(0);
+export const topNConfigurationFieldAtom = atom<FieldStatisticsField | undefined>(undefined);
+export const fieldStatisticsFieldAtom = atom<FieldStatisticsField | undefined>(undefined);
+export const fieldStatisticsResultAtom = atom<FieldStatisticsResult | undefined>(undefined);
+export const fieldStatisticsLoadingAtom = atom(false);
+export const fieldStatisticsErrorAtom = atom<Error | undefined>(undefined);
+export const discoverSharedColumnOrderAtom = atom<string[]>([]);
+// URL synchronization starts only after header initialization has applied a shared state.
+export const discoverShareReadyAtom = atom(false);
 export const discoverQueryStateAtom = atom<DiscoverQueryState>({
     status: 'idle',
     rowCount: 0,
@@ -67,7 +92,6 @@ export const pageAtom = atom<number>(1);
 export const pageSizeAtom = atomWithStorage<number>('discover-pagination-size', 50);
 
 // Surrounding Data Atoms
-export const surroundingDataFilterAtom = atom<DataFilterType[]>([]);
 export const beforeTimeFieldPageSizeAtom = atom<number>(5);
 export const afterTimeFieldPageSizeAtom = atom<number>(5);
 export const beforeTimeAtom = atom<string>('');
@@ -75,11 +99,14 @@ export const afterTimeAtom = atom<string>('');
 export const beforeCountAtom = atom<number>(0);
 export const afterCountAtom = atom<number>(0);
 export const surroundingTableFieldsAtom = atom<any[]>([]);
-export const surroundingSelectedFieldsAtom = atom<any[]>([]);
 
 export const datasourcesAtom = atom<Array<DataSourceInstanceSettings<DataSourceJsonData>>>([]);
 export const selectedDatasourceAtom = atomWithStorage<DataSourceInstanceSettings<DataSourceJsonData> | undefined>('discover-selected-datasource', undefined);
-export const timeZoneAtom = atomWithStorage<TimeZone>('discover-time-zone', getGrafanaUserTimeZone());
+const timeZoneOverrideAtom = atomWithStorage<TimeZone | null>('discover-time-zone', null);
+export const timeZoneAtom = atom(
+    get => get(timeZoneOverrideAtom) || getGrafanaUserTimeZone(),
+    (_get, set, value: TimeZone) => set(timeZoneOverrideAtom, value),
+);
 export const timeRangeAtom = atom<any>({
     from: dateTime(DISCOVER_SHORTCUTS[3].range()[0].toDate()),
     to: dateTime(DISCOVER_SHORTCUTS[3].range()[1].toDate()),
@@ -96,3 +123,8 @@ export const discoverLoadingAtom = atom({
     getTimeFields: false,
     getTableFields: false,
 });
+
+// Physical metadata is scoped independently of persisted UI field selections.
+export const tableMetadataAtom = atom<Record<string, { fields?: any[]; indexes?: any[] }>>({});
+export const variantPathFrequenciesAtom = atomWithStorage<Record<string, VariantPathFrequencies>>('discover-variant-path-frequencies-v1', {});
+export const variantSamplingWarningAtom = atom<Record<string, string>>({});

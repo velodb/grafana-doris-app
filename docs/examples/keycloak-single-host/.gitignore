@@ -1,0 +1,10 @@
+.env
+secrets/
+tls/
+plugins/
+enterprise-plugins/
+fe-custom.conf
+datasource*.json
+datasource.uid
+bootstrap.sql
+__pycache__/

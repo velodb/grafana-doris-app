@@ -28,6 +28,23 @@ export function useDatasourcePermissions(
   React.useEffect(() => {
     let isMounted = true;
 
+    // An empty permission configuration means that no team-level restriction is
+    // configured. Do not make the datasource picker depend on the user-teams API
+    // in that case: the endpoint may be unavailable behind a reverse proxy or
+    // for Grafana deployments that do not use teams at all.
+    if (permissionRules.length === 0) {
+      const allowedDatasources = filterDatasourcesByTeamPermissions(getDataSourceSrv().getList(), [], EMPTY_PERMISSIONS);
+      setState({
+        allowedDatasources,
+        allowedDatasourceUids: new Set(allowedDatasources.map(ds => ds.uid)),
+        loading: false,
+      });
+
+      return () => {
+        isMounted = false;
+      };
+    }
+
     async function loadPermissions() {
       try {
         const teams = await fetchCurrentUserTeams();

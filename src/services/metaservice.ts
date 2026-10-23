@@ -1,9 +1,11 @@
+import { normalizeColumnType } from 'utils/query-parser/column-types';
 import { toDataFrame } from '@grafana/data';
 import { getBackendSrv, logError } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
+import { lastValueFrom, Observable, finalize, shareReplay } from 'rxjs';
 import { withErrorHandler } from 'components/with-error-handler/withErrorHandler';
 import { toError } from 'utils/errors';
 import { escapeSqlIdentifier, quoteSqlLiteral } from 'utils/sql-filter';
+import { DORIS_DATASOURCE_TYPE } from './grafana-permissions';
 
 type GetColumnParams = {
     connectionId: string;
@@ -26,6 +28,11 @@ type GetIndexesParams = {
     datasourceType?: string;
 };
 
+type TryCastCapabilityParams = {
+    connectionId: string;
+    datasourceType?: string;
+};
+
 export type GetApplicationValuesParams = {
     selectdbDS: any;
     database: string;
@@ -38,109 +45,154 @@ export type GetApplicationValuesParams = {
 
 const escapeSqlLiteral = (value: string) => value.replace(/'/g, "''");
 
-const normalizeColumnType = ({ dataType, columnType }: { dataType?: string; columnType?: string }): string => {
-    const source = (columnType || dataType || '').trim();
-    if (!source) {
-        return '';
+// Cache capability probes during a Grafana session. SEARCH results are scoped
+// to the table and expression because its referenced fields need indexes.
+const tryCastSupportCache = new Map<string, Promise<boolean>>();
+const jsonSearchSupportCache = new Map<string, Promise<boolean>>();
+const searchSupportCache = new Map<string, Promise<boolean>>();
+
+function querySucceeded(data: unknown, refId: string): boolean {
+    const result = (data as { results?: Record<string, { error?: unknown; frames?: unknown[] }> })?.results?.[refId];
+    // Grafana can return an HTTP-success response containing a per-query error.
+    // Treat that as an unsupported capability instead of trusting frames alone.
+    return Boolean(result && !result.error && result.frames?.length);
+}
+
+export async function supportsTryCast({
+    connectionId,
+    datasourceType = DORIS_DATASOURCE_TYPE,
+}: TryCastCapabilityParams): Promise<boolean> {
+    if (!connectionId) {
+        return false;
     }
 
-    const lower = source.toLowerCase();
-
-    if (lower.startsWith('nullable(') && lower.endsWith(')')) {
-        const inner = source.slice(9, -1);
-        const normalizedInner = normalizeColumnType({ dataType: inner, columnType: undefined });
-        return normalizedInner ? `Nullable(${normalizedInner})` : source;
+    const cacheKey = `${datasourceType}:${connectionId}`;
+    const cached = tryCastSupportCache.get(cacheKey);
+    if (cached) {
+        return cached;
     }
 
-    if (lower.startsWith('map')) {
-        return source.replace(/^map/i, 'Map');
+    const supportPromise = (async (): Promise<boolean> => {
+        const response$ = withErrorHandler(getBackendSrv().fetch({
+            url: '/api/ds/query',
+            method: 'POST',
+            data: {
+                queries: [{
+                    refId: 'probeTryCast',
+                    datasource: { type: datasourceType, uid: connectionId },
+                    rawSql: 'SELECT TRY_CAST(1 AS BIGINT) AS try_cast_supported',
+                    format: 'table',
+                }],
+            },
+        }));
+
+        try {
+            const { data, ok } = await lastValueFrom(response$);
+            return Boolean(ok && querySucceeded(data, 'probeTryCast'));
+        } catch {
+            return false;
+        }
+    })();
+
+    tryCastSupportCache.set(cacheKey, supportPromise);
+    return supportPromise;
+}
+
+/** JSON_SEARCH is required to preserve Lucene text semantics for JSON arrays. */
+export async function supportsJsonSearch({
+    connectionId,
+    datasourceType = DORIS_DATASOURCE_TYPE,
+}: TryCastCapabilityParams): Promise<boolean> {
+    if (!connectionId) {
+        return false;
     }
 
-    if (lower.startsWith('array')) {
-        return source.replace(/^array/i, 'Array');
+    const cacheKey = `${datasourceType}:${connectionId}`;
+    const cached = jsonSearchSupportCache.get(cacheKey);
+    if (cached) {
+        return cached;
     }
 
-    if (lower.startsWith('json')) {
-        return 'JSON';
+    const supportPromise = (async (): Promise<boolean> => {
+        const response$ = withErrorHandler(getBackendSrv().fetch({
+            url: '/api/ds/query',
+            method: 'POST',
+            data: {
+                queries: [{
+                    refId: 'probeJsonSearch',
+                    datasource: { type: datasourceType, uid: connectionId },
+                    rawSql: "SELECT JSON_SEARCH(CAST('[\"x\"]' AS JSON), 'one', 'x') AS json_search_supported",
+                    format: 'table',
+                }],
+            },
+        }));
+
+        try {
+            const { data, ok } = await lastValueFrom(response$);
+            return Boolean(ok && querySucceeded(data, 'probeJsonSearch'));
+        } catch {
+            return false;
+        }
+    })();
+
+    jsonSearchSupportCache.set(cacheKey, supportPromise);
+    return supportPromise;
+}
+
+/** Probe SEARCH against the current table and query because the function is a
+ * WHERE predicate and each referenced field must have an inverted index. */
+export async function supportsSearch({
+    connectionId,
+    datasourceType = DORIS_DATASOURCE_TYPE,
+    databaseName,
+    tableName,
+    query,
+}: TryCastCapabilityParams & { databaseName: string; tableName: string; query: string }): Promise<boolean> {
+    if (!connectionId || !databaseName || !tableName || !query) {
+        return false;
     }
 
-    if (lower.startsWith('variant')) {
-        return 'Variant';
+    const cacheKey = JSON.stringify([datasourceType, connectionId, databaseName, tableName, query]);
+    const cached = searchSupportCache.get(cacheKey);
+    if (cached) {
+        return cached;
     }
 
-    if (lower === 'bool' || lower === 'boolean' || lower.startsWith('tinyint(1)')) {
-        return 'Bool';
-    }
+    const supportPromise = (async (): Promise<boolean> => {
+        const response$ = withErrorHandler(getBackendSrv().fetch({
+            url: '/api/ds/query',
+            method: 'POST',
+            data: {
+                queries: [{
+                    refId: 'probeSearch',
+                    datasource: { type: datasourceType, uid: connectionId },
+                    // SEARCH is a WHERE predicate and requires indexed fields in the scanned table.
+                    // EXPLAIN validates the actual query without reading rows.
+                    rawSql: `EXPLAIN SELECT 1 FROM ${escapeSqlIdentifier(databaseName)}.${escapeSqlIdentifier(tableName)} WHERE SEARCH(${quoteSqlLiteral(query)}, '{"mode":"lucene"}')`,
+                    format: 'table',
+                }],
+            },
+        }), { showBackendError: false });
 
-    if (lower.startsWith('tinyint')) {
-        return 'Int8';
-    }
+        try {
+            const { data, ok } = await lastValueFrom(response$);
+            return Boolean(ok && querySucceeded(data, 'probeSearch'));
+        } catch {
+            return false;
+        }
+    })();
 
-    if (lower.startsWith('smallint')) {
-        return 'Int16';
-    }
+    searchSupportCache.set(cacheKey, supportPromise);
+    return supportPromise;
+}
 
-    if (lower.startsWith('mediumint')) {
-        return 'Int32';
-    }
-
-    if (lower.startsWith('bigint') || lower.startsWith('int') || lower.startsWith('integer')) {
-        return 'Int64';
-    }
-
-    if (lower.startsWith('float') || lower.startsWith('double') || lower.startsWith('real')) {
-        return 'Float64';
-    }
-
-    if (lower.startsWith('decimal') || lower.startsWith('numeric')) {
-        return 'Float64';
-    }
-
-    if (lower.startsWith('date')) {
-        return source.replace(/^date/i, 'Date');
-    }
-
-    if (lower.startsWith('timestamp') || lower.startsWith('datetime')) {
-        return 'DateTime';
-    }
-
-    if (lower.startsWith('enum')) {
-        return source.replace(/^enum/i, 'Enum');
-    }
-
-    if (lower.startsWith('uuid')) {
-        return 'UUID';
-    }
-
-    if (lower.startsWith('ipv4')) {
-        return 'IPv4';
-    }
-
-    if (lower.startsWith('ipv6')) {
-        return 'IPv6';
-    }
-
-    if (lower.startsWith('tuple')) {
-        return source.replace(/^tuple/i, 'Tuple');
-    }
-
-    if (lower.startsWith('struct')) {
-        return source.replace(/^struct/i, 'Tuple');
-    }
-
-    if (lower.startsWith('char') || lower.startsWith('varchar') || lower.startsWith('text') || lower.startsWith('string')) {
-        return 'String';
-    }
-
-    return source;
-};
 
 export async function getColumn({
     connectionId,
     database,
     table,
     column,
-    datasourceType = 'mysql',
+    datasourceType = DORIS_DATASOURCE_TYPE,
 }: GetColumnParams): Promise<(ColumnMetadata & { normalizedType: string }) | null> {
     if (!connectionId || !database || !table || !column) {
         return null;
@@ -223,7 +275,7 @@ export async function getInvertedIndexColumns({
     connectionId,
     database,
     table,
-    datasourceType = 'mysql',
+    datasourceType = DORIS_DATASOURCE_TYPE,
 }: GetIndexesParams): Promise<string[]> {
     if (!connectionId || !database || !table) {
         return [];
@@ -309,7 +361,7 @@ export function getDatabases(selectdbDS: any) {
                 {
                     refId: 'getDatabases',
                     datasource: {
-                        type: 'mysql',
+                        type: selectdbDS.type || DORIS_DATASOURCE_TYPE,
                         uid: selectdbDS.uid,
                     },
                     rawSql: 'SHOW DATABASES',
@@ -329,7 +381,7 @@ export function getTablesService({ selectdbDS, database }: { selectdbDS: any; da
             queries: [
                 {
                     refId: 'getTables',
-                    datasource: { type: 'mysql', uid: selectdbDS.uid },
+                    datasource: { type: selectdbDS.type || DORIS_DATASOURCE_TYPE, uid: selectdbDS.uid },
                     rawSql: `SHOW TABLES FROM \`${database}\``,
                     format: 'table',
                 },
@@ -338,19 +390,79 @@ export function getTablesService({ selectdbDS, database }: { selectdbDS: any; da
     }));
 }
 
+const tableMetadataRequests = new Map<string, Observable<any>>();
+
+function sharedMetadataRequest(key: string, request: () => Observable<any>): Observable<any> {
+    const existing = tableMetadataRequests.get(key);
+    if (existing) {
+        return existing;
+    }
+    const response = request().pipe(finalize(() => tableMetadataRequests.delete(key)), shareReplay({ bufferSize: 1, refCount: true }));
+    tableMetadataRequests.set(key, response);
+    return response;
+}
+
 export function getFieldsService({ selectdbDS, database, table }: { selectdbDS: any; database: string; table: string }) {
-    return withErrorHandler(getBackendSrv().fetch({
+    return sharedMetadataRequest(JSON.stringify(['fields', selectdbDS.uid, database, table]), () => withErrorHandler(getBackendSrv().fetch({
         url: '/api/ds/query',
         method: 'POST',
         data: {
             queries: [
                 {
                     refId: 'getFields',
-                    datasource: { type: 'mysql', uid: selectdbDS.uid },
+                    datasource: { type: selectdbDS.type || DORIS_DATASOURCE_TYPE, uid: selectdbDS.uid },
                     rawSql: `SHOW COLUMNS FROM \`${database}\`.\`${table}\``,
                     format: 'table',
                 },
             ],
+        },
+    })));
+}
+
+export function getVariantFieldsService({ selectdbDS, database, table }: { selectdbDS: any; database: string; table: string }) {
+    return withErrorHandler(getBackendSrv().fetch({
+        url: '/api/ds/query',
+        method: 'POST',
+        data: {
+            queries: [
+                {
+                    refId: 'getVariantFields',
+                    datasource: { type: selectdbDS.type || DORIS_DATASOURCE_TYPE, uid: selectdbDS.uid },
+                    rawSql: `DESC \`${database}\`.\`${table}\``,
+                    format: 'table',
+                    // The datasource executes this setting and DESC through the
+                    // same Doris connection. A standalone SET would be lost,
+                    // because normal datasource queries use fresh connections.
+                    describeExtendVariantColumn: true,
+                },
+            ],
+        },
+    }));
+}
+
+export function getVariantPathSampleService(params: {
+    selectdbDS: any;
+    database: string;
+    table: string;
+    timeField: string;
+    startDate: string;
+    endDate: string;
+    columns: string[];
+}) {
+    const { selectdbDS, database, table, timeField, startDate, endDate, columns } = params;
+    const projections = columns.map((column, index) =>
+        `CAST(${escapeSqlIdentifier(column)} AS STRING) AS c${index + 1}`,
+    );
+    return withErrorHandler(getBackendSrv().fetch({
+        url: '/api/ds/query',
+        method: 'POST',
+        data: {
+            queries: [{
+                refId: 'sampleVariantPaths',
+                datasource: { type: selectdbDS.type || DORIS_DATASOURCE_TYPE, uid: selectdbDS.uid },
+                rawSql: `SELECT ${projections.join(', ')} FROM ${escapeSqlIdentifier(database)}.${escapeSqlIdentifier(table)} WHERE ${escapeSqlIdentifier(timeField)} BETWEEN ${quoteSqlLiteral(startDate)} AND ${quoteSqlLiteral(endDate)} ORDER BY rand() LIMIT 5000`,
+                format: 'table',
+            }],
         },
     }));
 }
@@ -388,7 +500,7 @@ export function getApplicationValuesService(params: GetApplicationValuesParams) 
             queries: [
                 {
                     refId: 'getApplicationValues',
-                    datasource: { type: 'mysql', uid: selectdbDS.uid },
+                    datasource: { type: selectdbDS.type || DORIS_DATASOURCE_TYPE, uid: selectdbDS.uid },
                     rawSql: getApplicationValuesSQL(queryParams),
                     format: 'table',
                 },
@@ -415,18 +527,18 @@ export function getColumnFromFieldService({ selectdbDS, database, table }: { sel
 }
 
 export function getIndexesService({ selectdbDS, database, table }: { selectdbDS: any; database: string; table: string }) {
-    return withErrorHandler(getBackendSrv().fetch({
+    return sharedMetadataRequest(JSON.stringify(['indexes', selectdbDS.uid, database, table]), () => withErrorHandler(getBackendSrv().fetch({
         url: '/api/ds/query',
         method: 'POST',
         data: {
             queries: [
                 {
                     refId: 'getIndexes',
-                    datasource: { type: 'mysql', uid: selectdbDS.uid },
+                    datasource: { type: selectdbDS.type || DORIS_DATASOURCE_TYPE, uid: selectdbDS.uid },
                     rawSql: `SHOW INDEXES FROM \`${database}\`.\`${table}\``,
                     format: 'table',
                 },
             ],
         },
-    }));
+    })));
 }
