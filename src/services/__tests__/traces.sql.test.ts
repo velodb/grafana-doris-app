@@ -92,6 +92,21 @@ describe('buildTraceAggSQLFromParams', () => {
         expect(sql).toContain(`ROW_NUMBER() OVER(ORDER BY ${orderBy}) AS rn`);
         expect(sql).not.toContain('page_root_spans AS (');
     });
+
+    it.each(['longest-duration', 'shortest-duration', 'most-spans', 'least-spans'])(
+        'bounds the aggregated span scan by time so Doris can prune partitions for %s sorting',
+        sortBy => {
+            const sql = buildTraceAggSQLFromParams({
+                ...baseParams,
+                sortBy,
+            });
+
+            const aggregated = sql.slice(sql.indexOf('aggregated AS ('), sql.indexOf('numbered AS ('));
+            expect(aggregated).toContain(
+                "WHERE t.timestamp >= '2026-03-18 00:00:00' - INTERVAL 2 DAY\n      AND t.timestamp < '2026-03-19 00:00:00' + INTERVAL 2 DAY\n    GROUP BY t.trace_id, r.operation, r.root_service",
+            );
+        },
+    );
 });
 
 describe('getQueryTableTraceSQL', () => {
