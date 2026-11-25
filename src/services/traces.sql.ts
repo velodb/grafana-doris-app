@@ -87,6 +87,14 @@ function tagsToDorisSQLConditions(tags?: string, tableAlias?: string): string {
   return conditions.length > 0 ? conditions.join(' AND ') : '1=1';
 }
 
+// Spans of a trace that starts inside the window can fall slightly outside it,
+// so scans that collect every span of already-selected traces use a padded window.
+// The predicate still lets Doris prune partitions instead of scanning the whole table.
+function buildExtendedTimeFilter(params: QueryTracesParams, alias: string): string {
+  return `${alias}.${params.timeField} >= '${params.startDate}' - INTERVAL 2 DAY
+      AND ${alias}.${params.timeField} < '${params.endDate}' + INTERVAL 2 DAY`;
+}
+
 function buildMostRecentTraceAggSQL(
   params: QueryTracesParams,
   limit: number,
@@ -101,9 +109,7 @@ function buildMostRecentTraceAggSQL(
     rootFilters.push(`operation = '${params.operation}'`);
   }
 
-  const extendedTimeFilter = (alias: string) =>
-    `${alias}.${params.timeField} >= '${params.startDate}' - INTERVAL 2 DAY
-      AND ${alias}.${params.timeField} < '${params.endDate}' + INTERVAL 2 DAY`;
+  const extendedTimeFilter = (alias: string) => buildExtendedTimeFilter(params, alias);
 
   const optionalCtes: string[] = [];
   const eligibilityJoins: string[] = [];
@@ -331,6 +337,7 @@ WITH
     FROM ${params.table} t
     JOIN all_trace_ids a ON t.trace_id = a.trace_id
     JOIN root_spans r ON t.trace_id = r.trace_id
+    WHERE ${buildExtendedTimeFilter(params, 't')}
     GROUP BY t.trace_id, r.operation, r.root_service
   ),
   numbered AS (
